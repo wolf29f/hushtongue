@@ -1,7 +1,6 @@
 package home
 
 import (
-	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -26,7 +25,6 @@ type Model struct {
 
 	// UI stuff
 	width, height int
-	help          help.Model
 }
 
 var _ tea.Model = Model{}
@@ -57,12 +55,13 @@ func NewModel(services *services.Services) Model {
 		},
 
 		keys: keys,
-		help: help.New(),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return func() tea.Msg {
+		return tui.PushKeyMapMsg{KeyMap: m.keys}
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -84,8 +83,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selectedOption >= 0 && m.selectedOption < len(m.options) {
 				return m, m.options[m.selectedOption].Cmd
 			}
-		case key.Matches(msg, m.keys.Help):
-			m.help.ShowAll = !m.help.ShowAll
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		}
@@ -112,22 +109,12 @@ func (m Model) View() tea.View {
 		Padding(1, 2).
 		Render(list)
 
-	helpView := m.help.View(m.keys)
-
-	_, helpHeight := lipgloss.Size(helpView)
-
 	centered := lipgloss.Place(
-		m.width, m.height-helpHeight,
+		m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
 		menuBox,
 	)
 
-	bottom := lipgloss.Place(
-		m.width, helpHeight,
-		lipgloss.Center, lipgloss.Bottom,
-		helpView,
-	)
-
-	return tea.NewView(centered + "\n" + bottom)
+	return tea.NewView(centered)
 
 }
