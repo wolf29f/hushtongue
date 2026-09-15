@@ -9,5 +9,5 @@ var (
 	selectedStyle = itemStyle.
 			Bold(true).
 			Foreground(lipgloss.Color("205")).
-			SetString("> ") // préfixe optionnel, cf. remarque plus bas
+			SetString("> ")
 )
