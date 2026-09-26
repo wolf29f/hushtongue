@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"log/slog"
+
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -9,6 +11,7 @@ import (
 
 type RootModel struct {
 	stack         []tea.Model
+	modal         tea.Model
 	width, height int
 
 	// Help related fields
@@ -55,6 +58,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.stack[i] = updated
 			cmds = append(cmds, cmd)
 		}
+		if m.modal != nil {
+			updated, cmd := m.modal.Update(msg)
+			m.modal = updated
+			cmds = append(cmds, cmd)
+		}
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
@@ -69,15 +77,15 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case PushPageMsg:
+	case pushPageMsg:
 		// The pushed page hasn't announced a keymap yet: don't keep showing
 		// the previous page's help for something no longer on screen.
 		m.keyMap = nil
 		m.footer = m.helpView()
-		m.stack = append(m.stack, msg.Page)
-		return m, tea.Batch(msg.Page.Init(), m.sizeCmd())
+		m.stack = append(m.stack, msg.page)
+		return m, tea.Batch(msg.page.Init(), m.sizeCmd())
 
-	case PopPageMsg:
+	case popPageMsg:
 		if len(m.stack) > 1 {
 			m.stack = m.stack[:len(m.stack)-1]
 		}
@@ -87,20 +95,35 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.footer = m.helpView()
 		return m, nil
 
-	case ReplacePageMsg:
+	case replacePageMsg:
 		m.keyMap = nil
 		m.footer = m.helpView()
 		top := len(m.stack) - 1
-		m.stack[top] = msg.Page
-		return m, tea.Batch(msg.Page.Init(), m.sizeCmd())
+		m.stack[top] = msg.page
+		return m, tea.Batch(msg.page.Init(), m.sizeCmd())
 
-	case PushKeyMapMsg:
-		m.keyMap = msg.KeyMap
+	case pushKeyMapMsg:
+		slog.Debug("received keymap msg")
+		m.keyMap = msg.keyMap
 		m.footer = m.helpView()
+		slog.Debug("updated keymap msg", "keyMap", m.keyMap, "footer", m.footer)
 		return m, nil
+
+	case pushModalMsg:
+		m.modal = msg.modal
+		return m, tea.Batch(msg.modal.Init(), m.sizeCmd())
+	case popModalMsg:
+		m.modal = nil
+		return m, m.sizeCmd()
 	}
 
-	// route to the top of the stack only
+	// If modal => route message to the active modal
+	if m.modal != nil {
+		var cmd tea.Cmd
+		m.modal, cmd = m.modal.Update(msg)
+		return m, cmd
+	}
+	// No modal => route message to the top of the stack
 	top := len(m.stack) - 1
 	updated, cmd := m.stack[top].Update(msg)
 	m.stack[top] = updated
@@ -122,8 +145,28 @@ func (m RootModel) helpView() string {
 }
 
 func (m RootModel) View() tea.View {
-	v := m.stack[len(m.stack)-1].View()
-	v.Content = v.Content + "\n" + m.footer
-	v.AltScreen = true
-	return v
+
+	pageView := m.stack[len(m.stack)-1].View()
+	pageView.Content = pageView.Content + "\n" + m.footer
+
+	if m.modal != nil {
+		modalContent := m.modal.View().Content
+		pageContent := pageView.Content
+
+		mw, mh := lipgloss.Size(modalContent)
+		mx := (m.width - mw) / 2
+		my := (m.height - mh) / 2
+
+		modal := lipgloss.NewLayer(m.modal.View().Content).Z(1).X(mx).Y(my)
+		page := lipgloss.NewLayer(pageContent).Z(0)
+
+		output := lipgloss.NewCompositor(modal, page).Render()
+
+		v := tea.NewView(output)
+		v.AltScreen = true
+		return v
+	}
+
+	pageView.AltScreen = true
+	return pageView
 }

@@ -1,38 +1,39 @@
-package translate
+package addmodal
 
 import (
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/wolf29f/hushtongue/internal/services"
 	"github.com/wolf29f/hushtongue/internal/tui"
 )
 
+// --- Model ---
+
 type Model struct {
 	services *services.Services
 
-	// UI stuff
 	width, height int
 }
 
 func NewModel(services *services.Services) Model {
-
 	return Model{
 		services: services,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tui.SetKeyMap(keys)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-	case tea.KeyPressMsg:
-		if msg.String() == "esc" {
-			return m, tui.PopPage
+		m.width, m.height = msg.Width, msg.Height
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, keys.Quit):
+			return m, tui.PopModal
 		}
 	}
 
@@ -40,15 +41,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
-
-	box := lipgloss.NewStyle().
+	content := lipgloss.NewStyle().
+		Padding(2).
 		Border(lipgloss.RoundedBorder()).
-		Padding(1, 2).
-		Render("Traduire")
+		Render("Create Word Placeholder")
 
-	return tea.NewView(lipgloss.Place(
-		m.width, m.height,
-		lipgloss.Center, lipgloss.Center,
-		box,
-	))
+	return tea.NewView(content)
 }

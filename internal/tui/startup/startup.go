@@ -48,9 +48,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case InitDoneMsg:
-		return m, func() tea.Msg {
-			return tui.ReplacePageMsg{Page: home.NewModel(m.services)}
-		}
+		return m, tui.ReplacePage(home.NewModel(m.services))
 	}
 
 	var cmd tea.Cmd

@@ -39,13 +39,13 @@ func NewModel(services *services.Services) Model {
 			{
 				Label: "🌐 Traduire",
 				Cmd: func() tea.Msg {
-					return tui.PushPageMsg{Page: translate.NewModel(services)}
+					return tui.PushPage(translate.NewModel(services))()
 				},
 			},
 			{
 				Label: "📘 Dictionnaire",
 				Cmd: func() tea.Msg {
-					return tui.PushPageMsg{Page: dictionary.NewModel(services)}
+					return tui.PushPage(dictionary.NewModel(services))()
 				},
 			},
 			{
@@ -59,9 +59,7 @@ func NewModel(services *services.Services) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg {
-		return tui.PushKeyMapMsg{KeyMap: m.keys}
-	}
+	return tui.SetKeyMap(m.keys)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

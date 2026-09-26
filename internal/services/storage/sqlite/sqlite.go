@@ -65,3 +65,28 @@ func (dao *DAO) Init() error {
 func (dao *DAO) Close() error {
 	return dao.DB.Close()
 }
+
+func (dao *DAO) ListWords(language string) ([]storage.Word, error) {
+	rows, err := dao.DB.Query("SELECT id, text FROM words WHERE lang = ?", language)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("Failed to close rows", "error", err)
+		}
+	}()
+
+	words := make([]storage.Word, 0)
+	for rows.Next() {
+		var word storage.Word
+		if err := rows.Scan(&word.ID, &word.Text); err != nil {
+			return nil, err
+		}
+		words = append(words, word)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return words, nil
+}

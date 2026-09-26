@@ -57,7 +57,7 @@ func setupLogger() (*os.File, error) {
 	}
 
 	handler := slog.NewJSONHandler(f, &slog.HandlerOptions{
-		Level:     slog.LevelInfo,
+		Level:     slog.LevelDebug,
 		AddSource: true,
 	})
 
