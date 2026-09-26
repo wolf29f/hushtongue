@@ -9,8 +9,10 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
+	"github.com/wolf29f/hushtongue/internal/tui/components/button"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/addmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/wordlist"
+	"github.com/wolf29f/hushtongue/internal/tui/styles"
 )
 
 /*
@@ -48,13 +50,12 @@ type Model struct {
 
 	// Components
 	wordList        wordlist.Model
+	addButton       button.Model
 	translationList tea.Model // list translations of the selected word, add/remove/generate(if origin) a translation
 	edit            tea.Model // edit a word or translation, type (prefix/root/suffix)
 
 	// UI stuff
 	width, height int
-
-	addButtonHeight, addButtonWidth int
 }
 
 func NewModel(services *services.Services) Model {
@@ -67,6 +68,8 @@ func NewModel(services *services.Services) Model {
 
 		translationList: nil,
 		edit:            nil,
+
+		addButton: button.New("Ajouter", tui.PushModal(addmodal.NewModel())),
 	}
 
 	wordList, err := services.Storage.ListWords(m.language)
@@ -102,8 +105,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, keys.FocusNext):
 			m.focus = (m.focus + 1) % focusOverflowed
+			m.addButton.Focused = m.focus == focusAddWord
 		case key.Matches(msg, keys.FocusPrev):
 			m.focus = (m.focus + focusOverflowed - 1) % focusOverflowed
+			m.addButton.Focused = m.focus == focusAddWord
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
@@ -117,15 +122,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.wordList, cmd = m.wordList.Update(msg)
 		cmds = append(cmds, cmd)
 	case focusAddWord:
-		switch msg := msg.(type) {
-		case tea.KeyPressMsg:
-			switch {
-			case key.Matches(msg, keys.Enter):
-				cmds = append(cmds,
-					tui.PushModal(addmodal.NewModel()),
-				)
-			}
-		}
+		var cmd tea.Cmd
+		m.addButton, cmd = m.addButton.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -151,34 +150,26 @@ func (m Model) handleNewWordMsg(msg addmodal.NewWordMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) computeLayout() Model {
 
-	m.addButtonHeight = defaultBoxStyle.GetVerticalFrameSize() + 1
-	m.addButtonWidth = m.width/3 - defaultBoxStyle.GetHorizontalFrameSize()
+	m.addButton.Width = m.width / 3
+	m.addButton.Height = styles.Box.GetVerticalFrameSize() + 1
 
-	m.wordList.SetWidth(m.width/3 - defaultBoxStyle.GetHorizontalFrameSize())
-	m.wordList.SetHeight(m.height - defaultBoxStyle.GetVerticalFrameSize() - m.addButtonHeight)
+	m.wordList.SetWidth(m.width/3 - styles.Box.GetHorizontalFrameSize())
+	m.wordList.SetHeight(m.height - styles.Box.GetVerticalFrameSize() - m.addButton.Height)
 
 	return m
 }
 
 func (m Model) View() tea.View {
 
-	var addButtonRender string
-	var wordListRender string
-
-	switch m.focus {
-	case focusWordList:
-		addButtonRender = defaultBoxStyle.
-			Render(lipgloss.PlaceHorizontal(m.addButtonWidth, lipgloss.Center, "Ajouter"))
-		wordListRender = defaultBoxStyleFocus.
-			Render(m.wordList.View().Content)
-	case focusAddWord:
-		addButtonRender = defaultBoxStyleFocus.
-			Render(lipgloss.PlaceHorizontal(m.addButtonWidth, lipgloss.Center, "Ajouter"))
-		wordListRender = defaultBoxStyle.
-			Render(m.wordList.View().Content)
+	wordListStyle := styles.Box
+	if m.focus == focusWordList {
+		wordListStyle = styles.BoxFocused
 	}
 
-	leftColumn := lipgloss.JoinVertical(lipgloss.Top, addButtonRender, wordListRender)
+	leftColumn := lipgloss.JoinVertical(lipgloss.Top,
+		m.addButton.View(),
+		wordListStyle.Render(m.wordList.View().Content),
+	)
 
 	horizontalContent := lipgloss.JoinHorizontal(lipgloss.Center, leftColumn, "->")
 
