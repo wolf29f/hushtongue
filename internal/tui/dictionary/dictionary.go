@@ -2,6 +2,7 @@ package dictionary
 
 import (
 	"log/slog"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -32,11 +33,20 @@ L'ui
 	- bouton pour supprimer + modale de confirmation (prévoir une modale générique avec configuration du msg de validation/annulation)
 */
 
+const (
+	langSource = "source"
+	langCon    = "con"
+)
+
+// minButtonGap is the minimum space between the buttons above the word list.
+const minButtonGap = 1
+
 type focus int
 
 const (
 	focusWordList focus = iota
 	focusAddWord
+	focusSwitchLang
 	focusOverflowed
 )
 
@@ -44,14 +54,13 @@ type Model struct {
 	services *services.Services
 
 	// State
-	language string // con or original
+	language string // langSource or langCon
 	focus    focus
 
 	// Components
-	wordList        wordlist.Model
-	addButton       button.Model
-	translationList tea.Model // list translations of the selected word, add/remove/generate(if origin) a translation
-	edit            tea.Model // edit a word or translation, type (prefix/root/suffix)
+	wordList         wordlist.Model
+	addButton        button.Model
+	switchLangButton button.Model
 
 	// UI stuff
 	width, height int
@@ -62,13 +71,14 @@ func NewModel(services *services.Services) Model {
 	m := Model{
 		services: services,
 
-		language: "source", // "source" or "con"
-		focus:    0,
-
-		translationList: nil,
-		edit:            nil,
+		language: langSource,
+		focus:    focusWordList,
 
 		addButton: button.New("Ajouter", tui.PushModal(addmodal.NewModel())),
+		switchLangButton: button.New(
+			switchLangLabel(langSource),
+			func() tea.Msg { return switchLangMsg{} },
+		),
 	}
 
 	wordList, err := services.Storage.ListWords(m.language)
@@ -82,7 +92,7 @@ func NewModel(services *services.Services) Model {
 		}
 	}
 	m.wordList = wordlist.NewModel(wordList)
-	m.wordList.Focused = true
+	m = m.applyFocus()
 	m = m.computeLayout()
 
 	return m
@@ -105,18 +115,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, keys.FocusNext):
 			m.focus = (m.focus + 1) % focusOverflowed
-			m.wordList.Focused = m.focus == focusWordList
-			m.addButton.Focused = m.focus == focusAddWord
+			m = m.applyFocus()
 		case key.Matches(msg, keys.FocusPrev):
 			m.focus = (m.focus + focusOverflowed - 1) % focusOverflowed
-			m.wordList.Focused = m.focus == focusWordList
-			m.addButton.Focused = m.focus == focusAddWord
+			m = m.applyFocus()
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
 	case addmodal.NewWordMsg:
-		// Handle the new word message here, e.g., update the word list
 		return m.handleNewWordMsg(msg)
+	case switchLangMsg:
+		return m.handleLangSwitch()
 	}
 	switch m.focus {
 	case focusWordList:
@@ -127,9 +136,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.addButton, cmd = m.addButton.Update(msg)
 		cmds = append(cmds, cmd)
+	case focusSwitchLang:
+		var cmd tea.Cmd
+		m.switchLangButton, cmd = m.switchLangButton.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+// applyFocus propagates m.focus to the components.
+func (m Model) applyFocus() Model {
+	m.wordList.Focused = m.focus == focusWordList
+	m.addButton.Focused = m.focus == focusAddWord
+	m.switchLangButton.Focused = m.focus == focusSwitchLang
+	return m
 }
 
 func (m Model) handleNewWordMsg(msg addmodal.NewWordMsg) (tea.Model, tea.Cmd) {
@@ -151,19 +172,63 @@ func (m Model) handleNewWordMsg(msg addmodal.NewWordMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m Model) handleLangSwitch() (tea.Model, tea.Cmd) {
+	slog.Debug("handling language switch message")
+
+	if m.language == langSource {
+		m.language = langCon
+	} else {
+		m.language = langSource
+	}
+	m.switchLangButton.Content = switchLangLabel(m.language)
+
+	// Refresh the word list after switching the language
+	wordList, err := m.services.Storage.ListWords(m.language)
+	if err != nil {
+		slog.Error("unable to get words", "error", err)
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.wordList, cmd = m.wordList.Reset().SetItems(wordList)
+	return m, cmd
+}
+
+// switchLangLabel renders "source/con" with the active language highlighted.
+func switchLangLabel(lang string) string {
+	if lang == langSource {
+		return activeLangStyle.Render(langSource) + "/" + langCon
+	}
+	return langSource + "/" + activeLangStyle.Render(langCon)
+}
+
 func (m Model) computeLayout() Model {
 
-	m.addButton.Width = m.width / 3
+	leftWidth := m.width / 3
+	// Buttons share the width equally, the gap absorbs the remainder
+	buttonWidth := (leftWidth - minButtonGap) / 2
+
+	m.addButton.Width = buttonWidth
 	m.addButton.Height = m.addButton.Style.GetVerticalFrameSize() + 1
 
-	m.wordList = m.wordList.SetSize(m.width/3, m.height-m.addButton.Height)
+	m.switchLangButton.Width = buttonWidth
+	m.switchLangButton.Height = m.switchLangButton.Style.GetVerticalFrameSize() + 1
+
+	m.wordList = m.wordList.SetSize(leftWidth, m.height-m.addButton.Height)
 
 	return m
 }
 
 func (m Model) View() tea.View {
+	gap := m.width/3 - m.addButton.Width - m.switchLangButton.Width
+
 	leftColumn := lipgloss.JoinVertical(lipgloss.Top,
-		m.addButton.View(),
+		lipgloss.JoinHorizontal(
+			lipgloss.Center,
+			m.addButton.View(),
+			strings.Repeat(" ", max(0, gap)),
+			m.switchLangButton.View(),
+		),
 		m.wordList.View().Content,
 	)
 

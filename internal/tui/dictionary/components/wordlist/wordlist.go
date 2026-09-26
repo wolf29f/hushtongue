@@ -89,6 +89,13 @@ func (m Model) SetSize(width, height int) Model {
 	return m
 }
 
+// Reset clears the filter and moves the cursor back to the first item.
+func (m Model) Reset() Model {
+	m.ResetFilter()
+	m.Select(0)
+	return m
+}
+
 func (m Model) SetItems(words []storage.Word) (Model, tea.Cmd) {
 	items := make([]list.Item, len(words))
 	for i, w := range words {
