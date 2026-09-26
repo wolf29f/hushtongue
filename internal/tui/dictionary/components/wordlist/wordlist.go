@@ -81,19 +81,21 @@ func NewModel(words []storage.Word) Model {
 }
 
 // SetSize sets the total size, border and padding included.
-func (m *Model) SetSize(width, height int) {
+func (m Model) SetSize(width, height int) Model {
 	m.Model.SetSize(
 		width-m.Style.GetHorizontalFrameSize(),
 		height-m.Style.GetVerticalFrameSize(),
 	)
+	return m
 }
 
-func (m *Model) SetItems(words []storage.Word) {
+func (m Model) SetItems(words []storage.Word) (Model, tea.Cmd) {
 	items := make([]list.Item, len(words))
 	for i, w := range words {
 		items[i] = item(w)
 	}
-	m.Model.SetItems(items)
+	cmd := m.Model.SetItems(items)
+	return m, cmd
 }
 
 func (m Model) Init() tea.Cmd {

@@ -143,11 +143,12 @@ func (m Model) handleNewWordMsg(msg addmodal.NewWordMsg) (tea.Model, tea.Cmd) {
 	wordList, err := m.services.Storage.ListWords(m.language)
 	if err != nil {
 		slog.Error("unable to get words", "error", err)
-	} else {
-		m.wordList.SetItems(wordList)
+		return m, nil
 	}
 
-	return m, nil
+	var cmd tea.Cmd
+	m.wordList, cmd = m.wordList.SetItems(wordList)
+	return m, cmd
 }
 
 func (m Model) computeLayout() Model {
@@ -155,7 +156,7 @@ func (m Model) computeLayout() Model {
 	m.addButton.Width = m.width / 3
 	m.addButton.Height = m.addButton.Style.GetVerticalFrameSize() + 1
 
-	m.wordList.SetSize(m.width/3, m.height-m.addButton.Height)
+	m.wordList = m.wordList.SetSize(m.width/3, m.height-m.addButton.Height)
 
 	return m
 }
