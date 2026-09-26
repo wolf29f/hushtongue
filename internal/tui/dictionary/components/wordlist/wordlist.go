@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
+	"github.com/wolf29f/hushtongue/internal/tui/styles"
 )
 
 type item storage.Word
@@ -48,6 +49,10 @@ func (d wordDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 type Model struct {
 	list.Model
 	chosen *item
+
+	Style        lipgloss.Style
+	FocusedStyle lipgloss.Style
+	Focused      bool
 }
 
 func NewModel(words []storage.Word) Model {
@@ -68,7 +73,19 @@ func NewModel(words []storage.Word) Model {
 	l.KeyMap.Quit.SetHelp("q", "quitter")
 	l.KeyMap.CloseFullHelp.SetHelp("?", "fermer l'aide")
 
-	return Model{Model: l}
+	return Model{
+		Model:        l,
+		Style:        styles.Box,
+		FocusedStyle: styles.BoxFocused,
+	}
+}
+
+// SetSize sets the total size, border and padding included.
+func (m *Model) SetSize(width, height int) {
+	m.Model.SetSize(
+		width-m.Style.GetHorizontalFrameSize(),
+		height-m.Style.GetVerticalFrameSize(),
+	)
 }
 
 func (m *Model) SetItems(words []storage.Word) {
@@ -107,7 +124,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
-	return tea.NewView(lipgloss.PlaceHorizontal(m.Width(), lipgloss.Left, m.Model.View()))
+	style := m.Style
+	if m.Focused {
+		style = m.FocusedStyle
+	}
+
+	return tea.NewView(style.Render(
+		lipgloss.PlaceHorizontal(m.Width(), lipgloss.Left, m.Model.View()),
+	))
 }
 
 func (m Model) KeyMapHelper() tui.KeyMapHelper {

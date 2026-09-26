@@ -12,7 +12,6 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/addmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/wordlist"
-	"github.com/wolf29f/hushtongue/internal/tui/styles"
 )
 
 /*
@@ -83,6 +82,7 @@ func NewModel(services *services.Services) Model {
 		}
 	}
 	m.wordList = wordlist.NewModel(wordList)
+	m.wordList.Focused = true
 	m = m.computeLayout()
 
 	return m
@@ -105,9 +105,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, keys.FocusNext):
 			m.focus = (m.focus + 1) % focusOverflowed
+			m.wordList.Focused = m.focus == focusWordList
 			m.addButton.Focused = m.focus == focusAddWord
 		case key.Matches(msg, keys.FocusPrev):
 			m.focus = (m.focus + focusOverflowed - 1) % focusOverflowed
+			m.wordList.Focused = m.focus == focusWordList
 			m.addButton.Focused = m.focus == focusAddWord
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
@@ -151,24 +153,17 @@ func (m Model) handleNewWordMsg(msg addmodal.NewWordMsg) (tea.Model, tea.Cmd) {
 func (m Model) computeLayout() Model {
 
 	m.addButton.Width = m.width / 3
-	m.addButton.Height = styles.Box.GetVerticalFrameSize() + 1
+	m.addButton.Height = m.addButton.Style.GetVerticalFrameSize() + 1
 
-	m.wordList.SetWidth(m.width/3 - styles.Box.GetHorizontalFrameSize())
-	m.wordList.SetHeight(m.height - styles.Box.GetVerticalFrameSize() - m.addButton.Height)
+	m.wordList.SetSize(m.width/3, m.height-m.addButton.Height)
 
 	return m
 }
 
 func (m Model) View() tea.View {
-
-	wordListStyle := styles.Box
-	if m.focus == focusWordList {
-		wordListStyle = styles.BoxFocused
-	}
-
 	leftColumn := lipgloss.JoinVertical(lipgloss.Top,
 		m.addButton.View(),
-		wordListStyle.Render(m.wordList.View().Content),
+		m.wordList.View().Content,
 	)
 
 	horizontalContent := lipgloss.JoinHorizontal(lipgloss.Center, leftColumn, "->")
