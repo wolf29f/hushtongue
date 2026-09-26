@@ -6,9 +6,14 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
 
 	"github.com/adrg/xdg"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 	_ "modernc.org/sqlite"
 )
 
@@ -89,4 +94,20 @@ func (dao *DAO) ListWords(language string) ([]storage.Word, error) {
 		return nil, err
 	}
 	return words, nil
+}
+
+func (dao *DAO) AddWord(language, word string) error {
+	normalized := normalize(word)
+	_, err := dao.DB.Exec("INSERT INTO words (lang, text, normalized) VALUES (?, ?, ?)", language, word, normalized)
+	return err
+}
+
+// normalize lowercases word and strips its diacritics ("Éléphant" -> "elephant").
+func normalize(word string) string {
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	stripped, _, err := transform.String(t, word)
+	if err != nil {
+		stripped = word
+	}
+	return strings.ToLower(stripped)
 }

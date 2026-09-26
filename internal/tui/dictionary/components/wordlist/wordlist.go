@@ -71,6 +71,14 @@ func NewModel(words []storage.Word) Model {
 	return Model{Model: l}
 }
 
+func (m *Model) SetItems(words []storage.Word) {
+	items := make([]list.Item, len(words))
+	for i, w := range words {
+		items[i] = item(w)
+	}
+	m.Model.SetItems(items)
+}
+
 func (m Model) Init() tea.Cmd {
 	return nil
 }

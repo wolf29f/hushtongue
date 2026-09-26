@@ -62,7 +62,7 @@ func NewModel(services *services.Services) Model {
 	m := Model{
 		services: services,
 
-		language: "original",
+		language: "source", // "source" or "con"
 		focus:    0,
 
 		translationList: nil,
@@ -107,6 +107,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
+	case addmodal.NewWordMsg:
+		// Handle the new word message here, e.g., update the word list
+		return m.handleNewWordMsg(msg)
 	}
 	switch m.focus {
 	case focusWordList:
@@ -119,14 +122,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch {
 			case key.Matches(msg, keys.Enter):
 				cmds = append(cmds,
-					tui.PushModal(addmodal.NewModel(m.services)),
+					tui.PushModal(addmodal.NewModel()),
 				)
-
 			}
 		}
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) handleNewWordMsg(msg addmodal.NewWordMsg) (tea.Model, tea.Cmd) {
+	slog.Debug("handling new word message", "word", msg.Word)
+
+	if err := m.services.Storage.AddWord(m.language, msg.Word); err != nil {
+		slog.Error("unable to add word", "error", err)
+	}
+
+	// Refresh the word list after adding a new word
+	wordList, err := m.services.Storage.ListWords(m.language)
+	if err != nil {
+		slog.Error("unable to get words", "error", err)
+	} else {
+		m.wordList.SetItems(wordList)
+	}
+
+	return m, nil
 }
 
 func (m Model) computeLayout() Model {

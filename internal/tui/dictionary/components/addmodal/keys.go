@@ -35,14 +35,14 @@ func (k keyMap) Help() key.Binding {
 var keys = keyMap{
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("⏎", "valider"),
+		key.WithHelp("⏎", "valider le mot"),
 	),
 	HelpKey: key.NewBinding(
 		key.WithKeys("?"),
 		key.WithHelp("?", "aide"),
 	),
 	Quit: key.NewBinding(
-		key.WithKeys("q", "esc", "ctrl+c"),
-		key.WithHelp("q", "quitter"),
+		key.WithKeys("esc", "ctrl+c"),
+		key.WithHelp("esc", "quitter"),
 	),
 }
