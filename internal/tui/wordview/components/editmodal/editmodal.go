@@ -1,4 +1,4 @@
-package addmodal
+package editmodal
 
 import (
 	"charm.land/bubbles/v2/key"
@@ -16,12 +16,13 @@ type Model struct {
 	width, height int
 }
 
-func NewModel() Model {
+func NewModel(defaultText string) Model {
 	ti := textinput.New()
-	ti.Placeholder = "Saisissez un mot"
+	ti.Placeholder = "Saisissez votre mot"
 	ti.Focus()
 	ti.CharLimit = 156
 	ti.SetWidth(20)
+	ti.SetValue(defaultText)
 
 	return Model{
 		textInput: ti,
@@ -41,7 +42,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopModal
 		case key.Matches(msg, keys.Enter):
-			return m, tea.Sequence(tui.PopModal, NewWord(m.textInput.Value()))
+			return m, tea.Sequence(tui.PopModal, NewText(m.textInput.Value()))
 		}
 	}
 
@@ -61,4 +62,4 @@ func (m Model) View() tea.View {
 	return tea.NewView(content)
 }
 
-func (m Model) headerView() string { return "Veuillez saisir votre mot\n" }
+func (m Model) headerView() string { return "Veuillez saisir le texte\n" }

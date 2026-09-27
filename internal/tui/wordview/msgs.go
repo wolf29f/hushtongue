@@ -4,7 +4,7 @@ import "github.com/wolf29f/hushtongue/internal/services/storage"
 
 type switchKindMsg struct{}
 
-type switchLangMsg struct{}
+type editWordMsg struct{}
 
 type wordDetailsMsg struct {
 	Word storage.WordDetails

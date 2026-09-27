@@ -1,4 +1,4 @@
-package addmodal
+package editmodal
 
 import (
 	"charm.land/bubbles/v2/key"
@@ -35,7 +35,7 @@ func (k keyMap) Help() key.Binding {
 var keys = keyMap{
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("⏎", "valider le mot"),
+		key.WithHelp("⏎", "valider le texte"),
 	),
 	HelpKey: key.NewBinding(
 		key.WithKeys("?"),

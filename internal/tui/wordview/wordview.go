@@ -7,13 +7,12 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/services"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
-	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/addmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/wordlist"
+	"github.com/wolf29f/hushtongue/internal/tui/wordview/components/editmodal"
 )
 
 /*
@@ -29,16 +28,10 @@ import (
 // buttonGap is the space between the buttons of the header row.
 const buttonGap = 1
 
-const (
-	langSource = "source"
-	langCon    = "con"
-)
-
 type focus int
 
 const (
-	focusSwitchLang focus = iota
-	focusSwitchKind       // only for MJ
+	focusSwitchKind focus = iota // only for MJ
 	focusEditWord
 	focusTranslations
 	focusDeleteWord
@@ -49,17 +42,15 @@ type Model struct {
 	services *services.Services
 
 	// State
-	loading  bool
-	wordID   int
-	word     storage.WordDetails
-	language string // langSource or langCon
-	focus    focus
+	loading bool
+	wordID  int
+	word    storage.WordDetails
+	focus   focus
 
 	// Components
 	translations     wordlist.Model
 	editButton       button.Model
 	switchKindButton button.Model
-	switchLangButton button.Model
 	deleteButton     button.Model
 
 	// UI stuff
@@ -72,30 +63,20 @@ func NewModel(wordID int, services *services.Services) Model {
 		services: services,
 		wordID:   wordID,
 		loading:  true,
+		focus:    focusEditWord,
 
-		editButton: button.New("Éditer", nil),
+		editButton: button.New("Éditer",
+			func() tea.Msg { return editWordMsg{} },
+		),
 		switchKindButton: button.New(
 			switchKindLabel("root"),
 			func() tea.Msg { return switchKindMsg{} },
 		),
-		switchLangButton: button.New(
-			switchLangLabel(langSource),
-			func() tea.Msg { return switchLangMsg{} },
-		),
 		deleteButton: button.New("Supprimer", nil),
 	}
 
-	wordList, err := services.Storage.ListWords(m.language)
-	if err != nil {
-		slog.Error("unable to get words", "error", err)
-		wordList = []storage.Word{
-			{
-				ID:   -1,
-				Text: "Impossible de charger le dictionnaire, verifiez les logs",
-			},
-		}
-	}
-	m.translations = wordlist.NewModel(wordList)
+	// TODO: load the word's translations once the storage supports them
+	m.translations = wordlist.NewModel(nil)
 	m = m.applyFocus()
 	m = m.computeLayout()
 
@@ -119,9 +100,18 @@ func (m Model) loadWordDetails() tea.Msg {
 	return wordDetailsMsg{Word: wordDetails}
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmds := make([]tea.Cmd, 0)
+func (m Model) saveWordDetails() tea.Msg {
+	wordDetails, err := m.services.Storage.SaveWord(m.word)
+	if err != nil {
+		slog.Error("unable to save word details", "error", err)
+		// Reload the stored word to discard the rejected edit
+		return m.loadWordDetails()
+	}
 
+	return wordDetailsMsg{Word: wordDetails}
+}
+
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case wordDetailsMsg:
 		m.word = msg.Word
@@ -143,78 +133,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
-	case addmodal.NewWordMsg:
-		return m, nil
-	case switchLangMsg:
-		return m.handleLangSwitch()
+	case editWordMsg:
+		return m, tui.PushModal(editmodal.NewModel(m.word.Text))
+	case editmodal.NewTextMsg:
+		return m.handleNewTextMsg(msg)
 	}
 
+	var cmd tea.Cmd
 	switch m.focus {
 	case focusTranslations:
-		var cmd tea.Cmd
 		m.translations, cmd = m.translations.Update(msg)
-		cmds = append(cmds, cmd)
+		return m, cmd
 	case focusEditWord:
-		var cmd tea.Cmd
 		m.editButton, cmd = m.editButton.Update(msg)
-		cmds = append(cmds, cmd)
-	case focusSwitchLang:
-		var cmd tea.Cmd
-		m.switchLangButton, cmd = m.switchLangButton.Update(msg)
-		cmds = append(cmds, cmd)
+		return m, cmd
 	case focusSwitchKind:
-		var cmd tea.Cmd
 		m.switchKindButton, cmd = m.switchKindButton.Update(msg)
-		cmds = append(cmds, cmd)
+		return m, cmd
 	case focusDeleteWord:
-		var cmd tea.Cmd
 		m.deleteButton, cmd = m.deleteButton.Update(msg)
-		cmds = append(cmds, cmd)
+		return m, cmd
 	}
 
-	return m, tea.Batch(cmds...)
+	return m, nil
 }
 
 // applyFocus propagates m.focus to the components.
 func (m Model) applyFocus() Model {
 	m.translations.Focused = m.focus == focusTranslations
 	m.editButton.Focused = m.focus == focusEditWord
-	m.switchLangButton.Focused = m.focus == focusSwitchLang
 	m.switchKindButton.Focused = m.focus == focusSwitchKind
 	m.deleteButton.Focused = m.focus == focusDeleteWord
 	return m
 }
 
-func (m Model) handleLangSwitch() (tea.Model, tea.Cmd) {
-	slog.Debug("handling language switch message")
-
-	if m.language == langSource {
-		m.language = langCon
-	} else {
-		m.language = langSource
+func (m Model) handleNewTextMsg(msg editmodal.NewTextMsg) (Model, tea.Cmd) {
+	text := strings.TrimSpace(msg.Text)
+	if text == "" || text == m.word.Text {
+		return m, nil
 	}
-	m.switchLangButton.Content = switchLangLabel(m.language)
 
-	// TODO: upate word data
-	// TODO: clear all translations
-	// TODO: modal to warn user about switching language, that it would clear translations (only if translation exists)
-
-	return m, nil
-}
-
-// switchLangLabel renders "source/con" with the active language highlighted.
-func switchLangLabel(lang string) string {
-	if lang == langSource {
-		return activeLangStyle.Render(config.SourceLangLabel) + "/" + config.ConLangLabel
-	}
-	return config.SourceLangLabel + "/" + activeLangStyle.Render(config.ConLangLabel)
+	m.word.Text = text
+	return m, m.saveWordDetails
 }
 
 func (m Model) computeLayout() Model {
 
 	// Buttons are sized to fit their content
 	for _, b := range []*button.Model{
-		&m.switchLangButton,
 		&m.switchKindButton,
 		&m.editButton,
 		&m.deleteButton,
@@ -237,7 +203,6 @@ func (m Model) View() tea.View {
 	gap := strings.Repeat(" ", buttonGap)
 	buttons := lipgloss.JoinHorizontal(
 		lipgloss.Center,
-		m.switchLangButton.View(), gap,
 		m.switchKindButton.View(), gap,
 		m.editButton.View(),
 	)

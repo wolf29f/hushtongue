@@ -102,6 +102,22 @@ func (dao *DAO) AddWord(language, word string) error {
 	return err
 }
 
+func (dao *DAO) SaveWord(word storage.WordDetails) (storage.WordDetails, error) {
+	word.Normalized = normalize(word.Text)
+
+	row := dao.DB.QueryRow(
+		"UPDATE words SET lang = ?, text = ?, normalized = ?, kind = ? WHERE id = ? "+
+			"RETURNING id, lang, text, normalized, kind",
+		word.Language, word.Text, word.Normalized, word.Kind, word.ID,
+	)
+
+	if err := row.Scan(&word.ID, &word.Language, &word.Text, &word.Normalized, &word.Kind); err != nil {
+		return storage.WordDetails{}, err
+	}
+
+	return word, nil
+}
+
 // normalize lowercases word and strips its diacritics ("Éléphant" -> "elephant").
 func normalize(word string) string {
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
