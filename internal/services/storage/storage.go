@@ -4,4 +4,5 @@ type Storage interface {
 	Init() error
 	AddWord(language, word string) error
 	ListWords(language string) ([]Word, error)
+	GetWord(id int) (WordDetails, error)
 }

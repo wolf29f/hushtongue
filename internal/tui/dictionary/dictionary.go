@@ -14,25 +14,8 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/addmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/wordlist"
+	"github.com/wolf29f/hushtongue/internal/tui/wordview"
 )
-
-/*
-L'ui
-- a gauche une liste des mots
-	- haut/bas pour choisir un mot
-	- ctrl+a pour ajouter (modale)
-	- ctrl+f pour rechercher/filtrer
-	- ctrl+d pour supprimer un mot (modale de confirmation)
-- au milieux, une flecher vers la droite
-- a droite une list de traductions
-- sur selection d'un mot:
-	- ouverture d'une page dédiée:
-	- mot (éditable)
-	- type (éditable, si MJ)
-	- traductions (list, add/remove/generate if original & MJ)
-	- ctrl+s pour sauvegarder les modifications
-	- bouton pour supprimer + modale de confirmation (prévoir une modale générique avec configuration du msg de validation/annulation)
-*/
 
 const (
 	langSource = "source"
@@ -87,7 +70,7 @@ func NewModel(services *services.Services) Model {
 		slog.Error("unable to get words", "error", err)
 		wordList = []storage.Word{
 			{
-				ID:   "NaN",
+				ID:   -1,
 				Text: "Impossible de charger le dictionnaire, verifiez les logs",
 			},
 		}
@@ -127,6 +110,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleNewWordMsg(msg)
 	case switchLangMsg:
 		return m.handleLangSwitch()
+	case wordlist.WordSelectedMsg:
+		return m.handleWordSelectedMsg(msg)
 	}
 	switch m.focus {
 	case focusWordList:
@@ -193,6 +178,12 @@ func (m Model) handleLangSwitch() (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.wordList, cmd = m.wordList.Reset().SetItems(wordList)
 	return m, cmd
+}
+
+func (m Model) handleWordSelectedMsg(msg wordlist.WordSelectedMsg) (tea.Model, tea.Cmd) {
+	slog.Debug("handling word selected message", "wordID", msg.ID)
+
+	return m, tui.PushPage(wordview.NewModel(msg.ID, m.services))
 }
 
 // switchLangLabel renders "source/con" with the active language highlighted.

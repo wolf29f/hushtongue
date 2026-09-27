@@ -122,9 +122,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "enter":
 			if i, ok := m.SelectedItem().(item); ok {
 				m.chosen = &i
-				return m, func() tea.Msg {
-					return WordSelectedMsg{ID: i.ID}
-				}
+				return m, tea.Quit
 			}
 		}
 	}
@@ -172,7 +170,3 @@ func (kmh keyMapHelper) Help() key.Binding {
 }
 
 var _ tui.KeyMapHelper = (*keyMapHelper)(nil)
-
-type WordSelectedMsg struct {
-	ID int
-}

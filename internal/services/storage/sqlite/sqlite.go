@@ -111,3 +111,12 @@ func normalize(word string) string {
 	}
 	return strings.ToLower(stripped)
 }
+
+func (dao *DAO) GetWord(id int) (storage.WordDetails, error) {
+	var word storage.WordDetails
+	err := dao.DB.QueryRow("SELECT id, lang, text, normalized, kind FROM words WHERE id = ?", id).Scan(&word.ID, &word.Language, &word.Text, &word.Normalized, &word.Kind)
+	if err != nil {
+		return storage.WordDetails{}, err
+	}
+	return word, nil
+}
