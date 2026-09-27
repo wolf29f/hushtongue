@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/services"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
@@ -197,9 +198,9 @@ func (m Model) handleLangSwitch() (tea.Model, tea.Cmd) {
 // switchLangLabel renders "source/con" with the active language highlighted.
 func switchLangLabel(lang string) string {
 	if lang == langSource {
-		return activeLangStyle.Render(langSource) + "/" + langCon
+		return activeLangStyle.Render(config.SourceLangLabel) + "/" + config.ConLangLabel
 	}
-	return langSource + "/" + activeLangStyle.Render(langCon)
+	return config.SourceLangLabel + "/" + activeLangStyle.Render(config.ConLangLabel)
 }
 
 func (m Model) computeLayout() Model {
