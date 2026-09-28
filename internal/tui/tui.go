@@ -16,8 +16,11 @@ type RootModel struct {
 
 	// Help related fields
 	keyMap KeyMapHelper
-	help   help.Model
-	footer string
+	// pageKeyMap holds the page's keymap while a modal is open, so it can
+	// be restored when the modal closes.
+	pageKeyMap KeyMapHelper
+	help       help.Model
+	footer     string
 }
 
 func NewRootModel(initialPage tea.Model) RootModel {
@@ -89,11 +92,12 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.stack) > 1 {
 			m.stack = m.stack[:len(m.stack)-1]
 		}
-		// The revealed page has no way to re-announce its keymap today, so
-		// drop the stale one rather than show help for the popped page.
+		// Re-init the revealed page so it refreshes its data and
+		// re-announces its keymap.
 		m.keyMap = nil
 		m.footer = m.helpView()
-		return m, nil
+		top := len(m.stack) - 1
+		return m, tea.Batch(m.stack[top].Init(), m.sizeCmd())
 
 	case replacePageMsg:
 		m.keyMap = nil
@@ -110,10 +114,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case pushModalMsg:
+		m.pageKeyMap = m.keyMap
 		m.modal = msg.modal
 		return m, tea.Batch(msg.modal.Init(), m.sizeCmd())
 	case popModalMsg:
+		// Only restore the page's keymap: re-initializing the page here
+		// would race with the modal's result message.
 		m.modal = nil
+		m.keyMap = m.pageKeyMap
+		m.pageKeyMap = nil
+		m.footer = m.helpView()
 		return m, m.sizeCmd()
 	}
 

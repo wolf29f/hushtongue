@@ -83,7 +83,21 @@ func NewModel(services *services.Services) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tui.SetKeyMap(m.wordList.KeyMapHelper())
+	return tea.Batch(
+		m.loadWords,
+		tui.SetKeyMap(m.wordList.KeyMapHelper()),
+	)
+}
+
+// loadWords reloads the word list, so that changes made on other pages
+// show up when the dictionary becomes active again.
+func (m Model) loadWords() tea.Msg {
+	words, err := m.services.Storage.ListWords(m.language)
+	if err != nil {
+		slog.Error("unable to get words", "error", err)
+		return nil
+	}
+	return wordsLoadedMsg{words: words}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -106,6 +120,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
+	case wordsLoadedMsg:
+		var cmd tea.Cmd
+		m.wordList, cmd = m.wordList.SetItems(msg.words)
+		return m, cmd
 	case addmodal.NewWordMsg:
 		return m.handleNewWordMsg(msg)
 	case switchLangMsg:
