@@ -111,7 +111,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.keyMap = msg.keyMap
 		m.footer = m.helpView()
 		slog.Debug("updated keymap msg", "keyMap", m.keyMap, "footer", m.footer)
-		return m, nil
+		return m, m.sizeCmd()
 
 	case pushModalMsg:
 		m.pageKeyMap = m.keyMap
