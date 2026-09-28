@@ -29,3 +29,16 @@ Early skeleton — data model and TUI scaffolding are in place; the translate an
 ```sh
 go run ./cmd
 ```
+
+## Building
+
+Build for all common targets
+
+```sh
+for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+  os=${t%/*}; arch=${t#*/}
+  ext=""; [ "$os" = "windows" ] && ext=".exe"
+  GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+    -o "dist/app-$os-$arch$ext" ./cmd/main.go
+done
+```
