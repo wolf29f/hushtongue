@@ -113,6 +113,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.computeLayout()
 		return m, nil
 	case tea.KeyPressMsg:
+		if m.wordList.CapturesKey(msg) {
+			break
+		}
 		switch {
 		case key.Matches(msg, keys.FocusNext):
 			m.focus = (m.focus + 1) % focusOverflowed

@@ -111,9 +111,6 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.SetSize(msg.Width, msg.Height)
-
 	case tea.KeyPressMsg:
 		// Keys only go to the focused component, other messages always do
 		if !m.Focused {
@@ -136,6 +133,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.Model, cmd = m.Model.Update(msg)
 	return m, cmd
+}
+
+// CapturesKey reports whether the list needs msg for itself, in which case
+// the parent must not handle it.
+func (m Model) CapturesKey(msg tea.KeyPressMsg) bool {
+	if !m.Focused {
+		return false
+	}
+	switch m.FilterState() {
+	case list.Filtering:
+		return true
+	case list.FilterApplied:
+		return key.Matches(msg, m.KeyMap.ClearFilter)
+	}
+	return false
 }
 
 func (m Model) View() tea.View {
