@@ -5,15 +5,15 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 )
 
-type switchLangMsg struct{}
+type switchLangPressedMsg struct{}
 
-type newWordMsg struct {
+type wordSubmittedMsg struct {
 	word string
 }
 
-func newWord(word string) tea.Cmd {
+func wordSubmitted(word string) tea.Cmd {
 	return func() tea.Msg {
-		return newWordMsg{word: word}
+		return wordSubmittedMsg{word: word}
 	}
 }
 

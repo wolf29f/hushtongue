@@ -69,16 +69,16 @@ func NewModel(wordID int, services *services.Services) Model {
 		focus:    focusEditWord,
 
 		editButton: button.New("Éditer",
-			func() tea.Msg { return editWordMsg{} },
+			func() tea.Msg { return editPressedMsg{} },
 		),
 		switchKindButton: button.New(
 			switchKindLabel("root"),
-			func() tea.Msg { return switchKindMsg{} },
+			func() tea.Msg { return switchKindPressedMsg{} },
 		),
 		deleteButton: button.New("Supprimer", tui.PushModal(confirmmodal.New(confirmmodal.Config{
 			Title:        "Supprimer ce mot ?",
 			ConfirmLabel: "Supprimer",
-			OnConfirm:    func() tea.Msg { return deleteWordMsg{} },
+			OnConfirm:    func() tea.Msg { return deleteConfirmedMsg{} },
 		}))),
 	}
 
@@ -101,10 +101,10 @@ func (m Model) loadWordDetails() tea.Msg {
 	wordDetails, err := m.services.Storage.GetWord(m.wordID)
 	if err != nil {
 		slog.Error("unable to get word details", "error", err)
-		return wordDetailsMsg{Word: storage.WordDetails{}}
+		return wordLoadedMsg{Word: storage.WordDetails{}}
 	}
 
-	return wordDetailsMsg{Word: wordDetails}
+	return wordLoadedMsg{Word: wordDetails}
 }
 
 func (m Model) saveWordDetails() tea.Msg {
@@ -115,7 +115,7 @@ func (m Model) saveWordDetails() tea.Msg {
 		return m.loadWordDetails()
 	}
 
-	return wordDetailsMsg{Word: wordDetails}
+	return wordLoadedMsg{Word: wordDetails}
 }
 
 func (m Model) changeKind(kind string) tea.Cmd {
@@ -126,7 +126,7 @@ func (m Model) changeKind(kind string) tea.Cmd {
 			return m.loadWordDetails()
 		}
 
-		return wordDetailsMsg{Word: wordDetails}
+		return wordLoadedMsg{Word: wordDetails}
 	}
 }
 
@@ -141,7 +141,7 @@ func (m Model) deleteWord() tea.Msg {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case wordDetailsMsg:
+	case wordLoadedMsg:
 		m.word = msg.Word
 		m.loading = false
 		m.switchKindButton.Content = switchKindLabel(m.word.Kind)
@@ -163,21 +163,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
-	case editWordMsg:
+	case editPressedMsg:
 		return m, tui.PushModal(inputmodal.New(inputmodal.Config{
 			Title:       "Veuillez saisir le texte",
 			Placeholder: "Saisissez votre mot",
 			Value:       m.word.Text,
 			SubmitHelp:  "valider le texte",
-			OnSubmit:    newText,
+			OnSubmit:    textSubmitted,
 		}))
-	case newTextMsg:
-		return m.handleNewTextMsg(msg)
-	case switchKindMsg:
-		return m.handleSwitchKindMsg()
-	case changeKindMsg:
+	case textSubmittedMsg:
+		return m.handleTextSubmittedMsg(msg)
+	case switchKindPressedMsg:
+		return m.handleSwitchKindPressedMsg()
+	case kindChangeConfirmedMsg:
 		return m, m.changeKind(msg.kind)
-	case deleteWordMsg:
+	case deleteConfirmedMsg:
 		return m, m.deleteWord
 	case wordDeletedMsg:
 		return m, tui.PopPage
@@ -210,7 +210,7 @@ func (m Model) moveFocus(step focus) Model {
 	return m.applyFocus()
 }
 
-func (m Model) handleSwitchKindMsg() (Model, tea.Cmd) {
+func (m Model) handleSwitchKindPressedMsg() (Model, tea.Cmd) {
 	kind := nextKind(m.word.Kind)
 
 	count := len(m.translations.Items())
@@ -224,11 +224,11 @@ func (m Model) handleSwitchKindMsg() (Model, tea.Cmd) {
 			switchKindLabel(kind), count,
 		),
 		ConfirmLabel: "Changer",
-		OnConfirm:    func() tea.Msg { return changeKindMsg{kind: kind} },
+		OnConfirm:    func() tea.Msg { return kindChangeConfirmedMsg{kind: kind} },
 	}))
 }
 
-func (m Model) handleNewTextMsg(msg newTextMsg) (Model, tea.Cmd) {
+func (m Model) handleTextSubmittedMsg(msg textSubmittedMsg) (Model, tea.Cmd) {
 	text := strings.TrimSpace(msg.text)
 	if text == "" || text == m.word.Text {
 		return m, nil

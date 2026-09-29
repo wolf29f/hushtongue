@@ -5,28 +5,28 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 )
 
-type switchKindMsg struct{}
+type switchKindPressedMsg struct{}
 
-type editWordMsg struct{}
+type editPressedMsg struct{}
 
-type deleteWordMsg struct{}
+type deleteConfirmedMsg struct{}
 
 type wordDeletedMsg struct{}
 
-type changeKindMsg struct {
+type kindChangeConfirmedMsg struct {
 	kind string
 }
 
-type newTextMsg struct {
+type textSubmittedMsg struct {
 	text string
 }
 
-func newText(text string) tea.Cmd {
+func textSubmitted(text string) tea.Cmd {
 	return func() tea.Msg {
-		return newTextMsg{text: text}
+		return textSubmittedMsg{text: text}
 	}
 }
 
-type wordDetailsMsg struct {
+type wordLoadedMsg struct {
 	Word storage.WordDetails
 }

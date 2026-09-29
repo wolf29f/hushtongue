@@ -62,11 +62,11 @@ func NewModel(services *services.Services) Model {
 			Title:       "Veuillez saisir votre mot",
 			Placeholder: "Saisissez un mot",
 			SubmitHelp:  "valider le mot",
-			OnSubmit:    newWord,
+			OnSubmit:    wordSubmitted,
 		}))),
 		switchLangButton: button.New(
 			switchLangLabel(langSource),
-			func() tea.Msg { return switchLangMsg{} },
+			func() tea.Msg { return switchLangPressedMsg{} },
 		),
 	}
 
@@ -130,9 +130,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.wordList, cmd = m.wordList.SetItems(msg.words)
 		return m, cmd
-	case newWordMsg:
-		return m.handleNewWordMsg(msg)
-	case switchLangMsg:
+	case wordSubmittedMsg:
+		return m.handleWordSubmittedMsg(msg)
+	case switchLangPressedMsg:
 		return m.handleLangSwitch()
 	case wordlist.WordSelectedMsg:
 		return m.handleWordSelectedMsg(msg)
@@ -155,7 +155,7 @@ func (m Model) applyFocus() Model {
 	return m
 }
 
-func (m Model) handleNewWordMsg(msg newWordMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleWordSubmittedMsg(msg wordSubmittedMsg) (tea.Model, tea.Cmd) {
 	slog.Debug("handling new word message", "word", msg.word)
 
 	if err := m.services.Storage.AddWord(m.language, msg.word); err != nil {
