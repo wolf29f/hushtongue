@@ -13,7 +13,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
 	"github.com/wolf29f/hushtongue/internal/tui/components/confirmmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/components/inputmodal"
-	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/wordlist"
+	"github.com/wolf29f/hushtongue/internal/tui/components/wordlist"
 )
 
 /*
@@ -131,10 +131,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, keys.FocusNext):
 			m.focus = (m.focus + 1) % focusOverflowed
-			m = m.applyFocus()
+			return m.applyFocus(), nil
 		case key.Matches(msg, keys.FocusPrev):
 			m.focus = (m.focus + focusOverflowed - 1) % focusOverflowed
-			m = m.applyFocus()
+			return m.applyFocus(), nil
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
@@ -154,23 +154,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	var cmd tea.Cmd
-	switch m.focus {
-	case focusTranslations:
-		m.translations, cmd = m.translations.Update(msg)
-		return m, cmd
-	case focusEditWord:
-		m.editButton, cmd = m.editButton.Update(msg)
-		return m, cmd
-	case focusSwitchKind:
-		m.switchKindButton, cmd = m.switchKindButton.Update(msg)
-		return m, cmd
-	case focusDeleteWord:
-		m.deleteButton, cmd = m.deleteButton.Update(msg)
-		return m, cmd
-	}
+	// Components ignore keys when they don't have focus
+	var translationsCmd, editCmd, switchKindCmd, deleteCmd tea.Cmd
+	m.translations, translationsCmd = m.translations.Update(msg)
+	m.editButton, editCmd = m.editButton.Update(msg)
+	m.switchKindButton, switchKindCmd = m.switchKindButton.Update(msg)
+	m.deleteButton, deleteCmd = m.deleteButton.Update(msg)
 
-	return m, nil
+	return m, tea.Batch(translationsCmd, editCmd, switchKindCmd, deleteCmd)
 }
 
 // applyFocus propagates m.focus to the components.

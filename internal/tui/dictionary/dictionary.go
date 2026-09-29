@@ -13,7 +13,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
 	"github.com/wolf29f/hushtongue/internal/tui/components/inputmodal"
-	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/wordlist"
+	"github.com/wolf29f/hushtongue/internal/tui/components/wordlist"
 	"github.com/wolf29f/hushtongue/internal/tui/wordview"
 )
 
@@ -106,8 +106,6 @@ func (m Model) loadWords() tea.Msg {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmds := make([]tea.Cmd, 0)
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -118,10 +116,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, keys.FocusNext):
 			m.focus = (m.focus + 1) % focusOverflowed
-			m = m.applyFocus()
+			return m.applyFocus(), nil
 		case key.Matches(msg, keys.FocusPrev):
 			m.focus = (m.focus + focusOverflowed - 1) % focusOverflowed
-			m = m.applyFocus()
+			return m.applyFocus(), nil
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
@@ -136,22 +134,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case wordlist.WordSelectedMsg:
 		return m.handleWordSelectedMsg(msg)
 	}
-	switch m.focus {
-	case focusWordList:
-		var cmd tea.Cmd
-		m.wordList, cmd = m.wordList.Update(msg)
-		cmds = append(cmds, cmd)
-	case focusAddWord:
-		var cmd tea.Cmd
-		m.addButton, cmd = m.addButton.Update(msg)
-		cmds = append(cmds, cmd)
-	case focusSwitchLang:
-		var cmd tea.Cmd
-		m.switchLangButton, cmd = m.switchLangButton.Update(msg)
-		cmds = append(cmds, cmd)
-	}
 
-	return m, tea.Batch(cmds...)
+	// Components ignore keys when they don't have focus
+	var wordListCmd, addCmd, switchLangCmd tea.Cmd
+	m.wordList, wordListCmd = m.wordList.Update(msg)
+	m.addButton, addCmd = m.addButton.Update(msg)
+	m.switchLangButton, switchLangCmd = m.switchLangButton.Update(msg)
+
+	return m, tea.Batch(wordListCmd, addCmd, switchLangCmd)
 }
 
 // applyFocus propagates m.focus to the components.

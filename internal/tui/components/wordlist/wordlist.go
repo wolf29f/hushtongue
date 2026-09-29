@@ -115,6 +115,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.SetSize(msg.Width, msg.Height)
 
 	case tea.KeyPressMsg:
+		// Keys only go to the focused component, other messages always do
+		if !m.Focused {
+			return m, nil
+		}
 		if m.FilterState() == list.Filtering {
 			break
 		}
@@ -122,7 +126,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "enter":
 			if i, ok := m.SelectedItem().(item); ok {
 				m.chosen = &i
-				return m, tea.Quit
+				return m, func() tea.Msg {
+					return WordSelectedMsg{ID: i.ID}
+				}
 			}
 		}
 	}
@@ -170,3 +176,7 @@ func (kmh keyMapHelper) Help() key.Binding {
 }
 
 var _ tui.KeyMapHelper = (*keyMapHelper)(nil)
+
+type WordSelectedMsg struct {
+	ID int
+}

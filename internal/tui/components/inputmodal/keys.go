@@ -47,7 +47,7 @@ func newKeyMap(submitHelp string) keyMap {
 			key.WithHelp("?", "aide"),
 		),
 		Quit: key.NewBinding(
-			key.WithKeys("esc", "ctrl+c"),
+			key.WithKeys("esc"),
 			key.WithHelp("esc", "quitter"),
 		),
 	}
