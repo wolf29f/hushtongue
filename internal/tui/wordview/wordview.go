@@ -1,12 +1,14 @@
 package wordview
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/services"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
@@ -116,11 +118,33 @@ func (m Model) saveWordDetails() tea.Msg {
 	return wordDetailsMsg{Word: wordDetails}
 }
 
+func (m Model) changeKind(kind string) tea.Cmd {
+	return func() tea.Msg {
+		wordDetails, err := m.services.Storage.ChangeWordKind(m.wordID, kind)
+		if err != nil {
+			slog.Error("unable to change word kind", "error", err)
+			return m.loadWordDetails()
+		}
+
+		return wordDetailsMsg{Word: wordDetails}
+	}
+}
+
+func (m Model) deleteWord() tea.Msg {
+	if err := m.services.Storage.DeleteWord(m.wordID); err != nil {
+		slog.Error("unable to delete word", "error", err)
+		return nil
+	}
+
+	return wordDeletedMsg{}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case wordDetailsMsg:
 		m.word = msg.Word
 		m.loading = false
+		m.switchKindButton.Content = switchKindLabel(m.word.Kind)
 		m = m.computeLayout()
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -133,11 +157,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch {
 		case key.Matches(msg, keys.FocusNext):
-			m.focus = (m.focus + 1) % focusOverflowed
-			return m.applyFocus(), nil
+			return m.moveFocus(1), nil
 		case key.Matches(msg, keys.FocusPrev):
-			m.focus = (m.focus + focusOverflowed - 1) % focusOverflowed
-			return m.applyFocus(), nil
+			return m.moveFocus(-1), nil
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
 		}
@@ -151,10 +173,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}))
 	case newTextMsg:
 		return m.handleNewTextMsg(msg)
+	case switchKindMsg:
+		return m.handleSwitchKindMsg()
+	case changeKindMsg:
+		return m, m.changeKind(msg.kind)
 	case deleteWordMsg:
-		// TODO: delete the word once the storage supports it
-		slog.Debug("handling delete word message", "wordID", m.wordID)
-		return m, nil
+		return m, m.deleteWord
+	case wordDeletedMsg:
+		return m, tui.PopPage
 	}
 
 	// Components ignore keys when they don't have focus
@@ -174,6 +200,32 @@ func (m Model) applyFocus() Model {
 	m.switchKindButton.Focused = m.focus == focusSwitchKind
 	m.deleteButton.Focused = m.focus == focusDeleteWord
 	return m
+}
+
+func (m Model) moveFocus(step focus) Model {
+	m.focus = (m.focus + focusOverflowed + step) % focusOverflowed
+	if m.focus == focusSwitchKind && !config.IsForGM {
+		m.focus = (m.focus + focusOverflowed + step) % focusOverflowed
+	}
+	return m.applyFocus()
+}
+
+func (m Model) handleSwitchKindMsg() (Model, tea.Cmd) {
+	kind := nextKind(m.word.Kind)
+
+	count := len(m.translations.Items())
+	if count == 0 {
+		return m, m.changeKind(kind)
+	}
+
+	return m, tui.PushModal(confirmmodal.New(confirmmodal.Config{
+		Title: fmt.Sprintf(
+			"Passer en %s ?\nLes %d liens de traduction seront supprimés.",
+			switchKindLabel(kind), count,
+		),
+		ConfirmLabel: "Changer",
+		OnConfirm:    func() tea.Msg { return changeKindMsg{kind: kind} },
+	}))
 }
 
 func (m Model) handleNewTextMsg(msg newTextMsg) (Model, tea.Cmd) {
@@ -209,12 +261,14 @@ func (m Model) computeLayout() Model {
 }
 
 func (m Model) View() tea.View {
-	gap := strings.Repeat(" ", buttonGap)
-	buttons := lipgloss.JoinHorizontal(
-		lipgloss.Center,
-		m.switchKindButton.View(), gap,
-		m.editButton.View(),
-	)
+	buttons := m.editButton.View()
+	if config.IsForGM {
+		buttons = lipgloss.JoinHorizontal(
+			lipgloss.Center,
+			m.switchKindButton.View(), strings.Repeat(" ", buttonGap),
+			buttons,
+		)
+	}
 
 	// The word takes the remaining width, buttons are pushed to the right
 	word := lipgloss.Place(
@@ -238,4 +292,15 @@ func (m Model) View() tea.View {
 
 func switchKindLabel(kind string) string {
 	return "<" + kind + ">"
+}
+
+func nextKind(kind string) string {
+	switch kind {
+	case "root":
+		return "prefix"
+	case "prefix":
+		return "suffix"
+	default:
+		return "root"
+	}
 }

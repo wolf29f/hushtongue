@@ -35,6 +35,7 @@ type Model struct {
 	width, height int
 }
 
+// New creates a text input modal.
 func New(cfg Config) Model {
 	ti := textinput.New()
 	ti.Placeholder = cfg.Placeholder

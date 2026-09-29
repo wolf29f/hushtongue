@@ -11,6 +11,12 @@ type editWordMsg struct{}
 
 type deleteWordMsg struct{}
 
+type wordDeletedMsg struct{}
+
+type changeKindMsg struct {
+	kind string
+}
+
 type newTextMsg struct {
 	text string
 }

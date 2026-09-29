@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	_ "embed"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -115,6 +116,45 @@ func (dao *DAO) SaveWord(word storage.WordDetails) (storage.WordDetails, error) 
 		return storage.WordDetails{}, err
 	}
 
+	return word, nil
+}
+
+// DeleteWord deletes the word and, by cascade, its translations.
+func (dao *DAO) DeleteWord(id int) error {
+	_, err := dao.DB.Exec("DELETE FROM words WHERE id = ?", id)
+	return err
+}
+
+// ChangeWordKind sets the word's kind and deletes its translations.
+func (dao *DAO) ChangeWordKind(id int, kind string) (storage.WordDetails, error) {
+	tx, err := dao.DB.Begin()
+	if err != nil {
+		return storage.WordDetails{}, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	if _, err := tx.Exec(
+		"DELETE FROM translations WHERE source_word_id = ? OR con_word_id = ?", id, id,
+	); err != nil {
+		return storage.WordDetails{}, err
+	}
+
+	var word storage.WordDetails
+	row := tx.QueryRow(
+		"UPDATE words SET kind = ? WHERE id = ? RETURNING id, lang, text, normalized, kind",
+		kind, id,
+	)
+	if err := row.Scan(&word.ID, &word.Language, &word.Text, &word.Normalized, &word.Kind); err != nil {
+		return storage.WordDetails{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return storage.WordDetails{}, err
+	}
 	return word, nil
 }
 

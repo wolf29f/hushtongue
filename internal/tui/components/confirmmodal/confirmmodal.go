@@ -40,6 +40,7 @@ type Model struct {
 	width, height int
 }
 
+// New creates a confirmation modal, the cancel button has focus.
 func New(cfg Config) Model {
 	confirmLabel := cfg.ConfirmLabel
 	if confirmLabel == "" {
