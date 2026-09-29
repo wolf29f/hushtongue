@@ -1,10 +1,11 @@
-package editmodal
+package confirmmodal
 
 import (
 	"charm.land/bubbles/v2/key"
 )
 
 type keyMap struct {
+	Switch  key.Binding
 	Enter   key.Binding
 	HelpKey key.Binding
 	Quit    key.Binding
@@ -20,6 +21,7 @@ func (k keyMap) ShortHelp() []key.Binding {
 // key.Map interface.
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
+		{k.Switch},
 		{k.Enter},
 		{k.HelpKey},
 		{k.Quit},
@@ -33,9 +35,13 @@ func (k keyMap) Help() key.Binding {
 }
 
 var keys = keyMap{
+	Switch: key.NewBinding(
+		key.WithKeys("tab", "shift+tab", "left", "right"),
+		key.WithHelp("tab/←/→", "changer de choix"),
+	),
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("⏎", "valider le texte"),
+		key.WithHelp("⏎", "valider le choix"),
 	),
 	HelpKey: key.NewBinding(
 		key.WithKeys("?"),
@@ -43,6 +49,6 @@ var keys = keyMap{
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("esc", "ctrl+c"),
-		key.WithHelp("esc", "quitter"),
+		key.WithHelp("esc", "annuler"),
 	),
 }

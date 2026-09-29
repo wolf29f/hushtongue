@@ -12,7 +12,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
-	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/addmodal"
+	"github.com/wolf29f/hushtongue/internal/tui/components/inputmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/wordlist"
 	"github.com/wolf29f/hushtongue/internal/tui/wordview"
 )
@@ -58,7 +58,12 @@ func NewModel(services *services.Services) Model {
 		language: langSource,
 		focus:    focusWordList,
 
-		addButton: button.New("Ajouter", tui.PushModal(addmodal.NewModel())),
+		addButton: button.New("Ajouter", tui.PushModal(inputmodal.New(inputmodal.Config{
+			Title:       "Veuillez saisir votre mot",
+			Placeholder: "Saisissez un mot",
+			SubmitHelp:  "valider le mot",
+			OnSubmit:    newWord,
+		}))),
 		switchLangButton: button.New(
 			switchLangLabel(langSource),
 			func() tea.Msg { return switchLangMsg{} },
@@ -124,7 +129,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.wordList, cmd = m.wordList.SetItems(msg.words)
 		return m, cmd
-	case addmodal.NewWordMsg:
+	case newWordMsg:
 		return m.handleNewWordMsg(msg)
 	case switchLangMsg:
 		return m.handleLangSwitch()
@@ -157,10 +162,10 @@ func (m Model) applyFocus() Model {
 	return m
 }
 
-func (m Model) handleNewWordMsg(msg addmodal.NewWordMsg) (tea.Model, tea.Cmd) {
-	slog.Debug("handling new word message", "word", msg.Word)
+func (m Model) handleNewWordMsg(msg newWordMsg) (tea.Model, tea.Cmd) {
+	slog.Debug("handling new word message", "word", msg.word)
 
-	if err := m.services.Storage.AddWord(m.language, msg.Word); err != nil {
+	if err := m.services.Storage.AddWord(m.language, msg.word); err != nil {
 		slog.Error("unable to add word", "error", err)
 	}
 

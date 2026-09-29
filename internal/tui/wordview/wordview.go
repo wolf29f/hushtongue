@@ -11,8 +11,9 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
+	"github.com/wolf29f/hushtongue/internal/tui/components/confirmmodal"
+	"github.com/wolf29f/hushtongue/internal/tui/components/inputmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary/components/wordlist"
-	"github.com/wolf29f/hushtongue/internal/tui/wordview/components/editmodal"
 )
 
 /*
@@ -22,7 +23,7 @@ import (
 	- type (éditable, si MJ)
 	- traductions (list, add/remove/generate if original & MJ)
 	- ctrl+s pour sauvegarder les modifications
-	- bouton pour supprimer + modale de confirmation (prévoir une modale générique avec configuration du msg de validation/annulation)
+	- bouton pour supprimer + modale de confirmation
 */
 
 // buttonGap is the space between the buttons of the header row.
@@ -72,7 +73,11 @@ func NewModel(wordID int, services *services.Services) Model {
 			switchKindLabel("root"),
 			func() tea.Msg { return switchKindMsg{} },
 		),
-		deleteButton: button.New("Supprimer", nil),
+		deleteButton: button.New("Supprimer", tui.PushModal(confirmmodal.New(confirmmodal.Config{
+			Title:        "Supprimer ce mot ?",
+			ConfirmLabel: "Supprimer",
+			OnConfirm:    func() tea.Msg { return deleteWordMsg{} },
+		}))),
 	}
 
 	// TODO: load the word's translations once the storage supports them
@@ -134,9 +139,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tui.PopPage
 		}
 	case editWordMsg:
-		return m, tui.PushModal(editmodal.NewModel(m.word.Text))
-	case editmodal.NewTextMsg:
+		return m, tui.PushModal(inputmodal.New(inputmodal.Config{
+			Title:       "Veuillez saisir le texte",
+			Placeholder: "Saisissez votre mot",
+			Value:       m.word.Text,
+			SubmitHelp:  "valider le texte",
+			OnSubmit:    newText,
+		}))
+	case newTextMsg:
 		return m.handleNewTextMsg(msg)
+	case deleteWordMsg:
+		// TODO: delete the word once the storage supports it
+		slog.Debug("handling delete word message", "wordID", m.wordID)
+		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -167,8 +182,8 @@ func (m Model) applyFocus() Model {
 	return m
 }
 
-func (m Model) handleNewTextMsg(msg editmodal.NewTextMsg) (Model, tea.Cmd) {
-	text := strings.TrimSpace(msg.Text)
+func (m Model) handleNewTextMsg(msg newTextMsg) (Model, tea.Cmd) {
+	text := strings.TrimSpace(msg.text)
 	if text == "" || text == m.word.Text {
 		return m, nil
 	}

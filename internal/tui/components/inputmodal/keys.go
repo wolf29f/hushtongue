@@ -1,4 +1,4 @@
-package addmodal
+package inputmodal
 
 import (
 	"charm.land/bubbles/v2/key"
@@ -32,17 +32,23 @@ func (k keyMap) Help() key.Binding {
 	return k.HelpKey
 }
 
-var keys = keyMap{
-	Enter: key.NewBinding(
-		key.WithKeys("enter"),
-		key.WithHelp("⏎", "valider le mot"),
-	),
-	HelpKey: key.NewBinding(
-		key.WithKeys("?"),
-		key.WithHelp("?", "aide"),
-	),
-	Quit: key.NewBinding(
-		key.WithKeys("esc", "ctrl+c"),
-		key.WithHelp("esc", "quitter"),
-	),
+func newKeyMap(submitHelp string) keyMap {
+	if submitHelp == "" {
+		submitHelp = "valider"
+	}
+
+	return keyMap{
+		Enter: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("⏎", submitHelp),
+		),
+		HelpKey: key.NewBinding(
+			key.WithKeys("?"),
+			key.WithHelp("?", "aide"),
+		),
+		Quit: key.NewBinding(
+			key.WithKeys("esc", "ctrl+c"),
+			key.WithHelp("esc", "quitter"),
+		),
+	}
 }
