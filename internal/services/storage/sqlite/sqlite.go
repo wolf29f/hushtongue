@@ -176,3 +176,49 @@ func (dao *DAO) GetWord(id int) (storage.WordDetails, error) {
 	}
 	return word, nil
 }
+
+// ListTranslations lists the word's translation links, in insertion order.
+func (dao *DAO) ListTranslations(wordID int) ([]storage.Translation, error) {
+	word, err := dao.GetWord(wordID)
+	if err != nil {
+		return nil, err
+	}
+
+	query := "SELECT t.id, w.id, w.text FROM translations t " +
+		"JOIN words w ON w.id = t.con_word_id " +
+		"WHERE t.source_word_id = ? ORDER BY t.id"
+	if word.Language == storage.LangCon {
+		query = "SELECT t.id, w.id, w.text FROM translations t " +
+			"JOIN words w ON w.id = t.source_word_id " +
+			"WHERE t.con_word_id = ? ORDER BY t.id"
+	}
+
+	rows, err := dao.DB.Query(query, wordID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("Failed to close rows", "error", err)
+		}
+	}()
+
+	translations := make([]storage.Translation, 0)
+	for rows.Next() {
+		var translation storage.Translation
+		if err := rows.Scan(&translation.ID, &translation.Word.ID, &translation.Word.Text); err != nil {
+			return nil, err
+		}
+		translations = append(translations, translation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return translations, nil
+}
+
+// DeleteTranslation deletes the translation link, not its words.
+func (dao *DAO) DeleteTranslation(id int) error {
+	_, err := dao.DB.Exec("DELETE FROM translations WHERE id = ?", id)
+	return err
+}

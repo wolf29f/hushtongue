@@ -17,11 +17,6 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui/wordview"
 )
 
-const (
-	langSource = "source"
-	langCon    = "con"
-)
-
 // minButtonGap is the minimum space between the buttons above the word list.
 const minButtonGap = 1
 
@@ -38,7 +33,7 @@ type Model struct {
 	services *services.Services
 
 	// State
-	language string // langSource or langCon
+	language string // storage.LangSource or storage.LangCon
 	focus    focus
 
 	// Components
@@ -55,7 +50,7 @@ func NewModel(services *services.Services) Model {
 	m := Model{
 		services: services,
 
-		language: langSource,
+		language: storage.LangSource,
 		focus:    focusWordList,
 
 		addButton: button.New("Ajouter", tui.PushModal(inputmodal.New(inputmodal.Config{
@@ -65,7 +60,7 @@ func NewModel(services *services.Services) Model {
 			OnSubmit:    wordSubmitted,
 		}))),
 		switchLangButton: button.New(
-			switchLangLabel(langSource),
+			switchLangLabel(storage.LangSource),
 			func() tea.Msg { return switchLangPressedMsg{} },
 		),
 	}
@@ -177,10 +172,10 @@ func (m Model) handleWordSubmittedMsg(msg wordSubmittedMsg) (tea.Model, tea.Cmd)
 func (m Model) handleLangSwitch() (tea.Model, tea.Cmd) {
 	slog.Debug("handling language switch message")
 
-	if m.language == langSource {
-		m.language = langCon
+	if m.language == storage.LangSource {
+		m.language = storage.LangCon
 	} else {
-		m.language = langSource
+		m.language = storage.LangSource
 	}
 	m.switchLangButton.Content = switchLangLabel(m.language)
 
@@ -204,7 +199,7 @@ func (m Model) handleWordSelectedMsg(msg wordlist.WordSelectedMsg) (tea.Model, t
 
 // switchLangLabel renders "source/con" with the active language highlighted.
 func switchLangLabel(lang string) string {
-	if lang == langSource {
+	if lang == storage.LangSource {
 		return activeLangStyle.Render(config.SourceLangLabel) + "/" + config.ConLangLabel
 	}
 	return config.SourceLangLabel + "/" + activeLangStyle.Render(config.ConLangLabel)

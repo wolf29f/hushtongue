@@ -3,9 +3,11 @@ package sqlite_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/adrg/xdg"
+	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/services/storage/sqlite"
 )
 
@@ -252,6 +254,70 @@ func TestChangeWordKind(t *testing.T) {
 	})
 }
 
+func TestListTranslations(t *testing.T) {
+	t.Run("lists the words on the other side, in insertion order", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+		vora := insertWord(t, dao, "con", "vora", "root")
+		ciel := insertWord(t, dao, "source", "ciel", "root")
+		merVora := insertTranslation(t, dao, mer, vora)
+		merAilo := insertTranslation(t, dao, mer, ailo)
+		cielAilo := insertTranslation(t, dao, ciel, ailo)
+
+		got, err := dao.ListTranslations(mer)
+		if err != nil {
+			t.Fatalf("ListTranslations() failed: %v", err)
+		}
+		want := []storage.Translation{
+			{ID: merVora, Word: storage.Word{ID: vora, Text: "vora"}},
+			{ID: merAilo, Word: storage.Word{ID: ailo, Text: "ailo"}},
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("ListTranslations(mer) = %v, want %v", got, want)
+		}
+
+		got, err = dao.ListTranslations(ailo)
+		if err != nil {
+			t.Fatalf("ListTranslations() failed: %v", err)
+		}
+		want = []storage.Translation{
+			{ID: merAilo, Word: storage.Word{ID: mer, Text: "mer"}},
+			{ID: cielAilo, Word: storage.Word{ID: ciel, Text: "ciel"}},
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("ListTranslations(ailo) = %v, want %v", got, want)
+		}
+	})
+}
+
+func TestDeleteTranslation(t *testing.T) {
+	t.Run("deletes the link but keeps both words", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+		ciel := insertWord(t, dao, "source", "ciel", "root")
+		merAilo := insertTranslation(t, dao, mer, ailo)
+		insertTranslation(t, dao, ciel, ailo)
+
+		if err := dao.DeleteTranslation(merAilo); err != nil {
+			t.Fatalf("DeleteTranslation() failed: %v", err)
+		}
+
+		if got := countTranslations(t, dao, mer); got != 0 {
+			t.Errorf("mer has %d translations, want 0", got)
+		}
+		if got := countTranslations(t, dao, ciel); got != 1 {
+			t.Errorf("unrelated translation deleted: ciel has %d translations, want 1", got)
+		}
+		for _, id := range []int{mer, ailo} {
+			if _, err := dao.GetWord(id); err != nil {
+				t.Errorf("word %d was deleted: %v", id, err)
+			}
+		}
+	})
+}
+
 func newTestDAO(t *testing.T) *sqlite.DAO {
 	t.Helper()
 	dao, err := sqlite.Load(filepath.Join(t.TempDir(), "test.db"))
@@ -281,15 +347,20 @@ func insertWord(t *testing.T, dao *sqlite.DAO, lang, text, kind string) int {
 	return int(id)
 }
 
-func insertTranslation(t *testing.T, dao *sqlite.DAO, sourceID, conID int) {
+func insertTranslation(t *testing.T, dao *sqlite.DAO, sourceID, conID int) int {
 	t.Helper()
-	_, err := dao.DB.Exec(
+	res, err := dao.DB.Exec(
 		`INSERT INTO translations (source_word_id, con_word_id) VALUES (?, ?)`,
 		sourceID, conID,
 	)
 	if err != nil {
 		t.Fatalf("inserting translation: %v", err)
 	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("reading inserted translation id: %v", err)
+	}
+	return int(id)
 }
 
 func countTranslations(t *testing.T, dao *sqlite.DAO, wordID int) int {

@@ -16,6 +16,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui/components/confirmmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/components/inputmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/components/wordlist"
+	"github.com/wolf29f/hushtongue/internal/tui/translationpicker"
 )
 
 /*
@@ -37,6 +38,7 @@ const (
 	focusSwitchKind focus = iota // only for MJ
 	focusEditWord
 	focusTranslations
+	focusAddTranslation
 	focusDeleteWord
 	focusOverflowed
 )
@@ -48,13 +50,15 @@ type Model struct {
 	loading bool
 	wordID  int
 	word    storage.WordDetails
+	links   []storage.Translation
 	focus   focus
 
 	// Components
-	translations     wordlist.Model
-	editButton       button.Model
-	switchKindButton button.Model
-	deleteButton     button.Model
+	translations         wordlist.Model
+	editButton           button.Model
+	switchKindButton     button.Model
+	addTranslationButton button.Model
+	deleteButton         button.Model
 
 	// UI stuff
 	width, height int
@@ -75,14 +79,16 @@ func NewModel(wordID int, services *services.Services) Model {
 			switchKindLabel("root"),
 			func() tea.Msg { return switchKindPressedMsg{} },
 		),
-		deleteButton: button.New("Supprimer", tui.PushModal(confirmmodal.New(confirmmodal.Config{
-			Title:        "Supprimer ce mot ?",
-			ConfirmLabel: "Supprimer",
+		addTranslationButton: button.New("Ajouter une traduction",
+			func() tea.Msg { return addTranslationPressedMsg{} },
+		),
+		deleteButton: button.New("Supprimer le mot", tui.PushModal(confirmmodal.New(confirmmodal.Config{
+			Title:        "Supprimer ce mot du dictionnaire ?\nSes liens de traduction seront aussi supprimés.",
+			ConfirmLabel: "Supprimer le mot",
 			OnConfirm:    func() tea.Msg { return deleteConfirmedMsg{} },
 		}))),
 	}
 
-	// TODO: load the word's translations once the storage supports them
 	m.translations = wordlist.NewModel(nil)
 	m = m.applyFocus()
 	m = m.computeLayout()
@@ -93,8 +99,19 @@ func NewModel(wordID int, services *services.Services) Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.loadWordDetails,
-		tui.SetKeyMap(m.translations.KeyMapHelper()),
+		m.loadTranslations,
+		m.setKeyMap(),
 	)
+}
+
+// setKeyMap announces the help keymap, which depends on the focus.
+func (m Model) setKeyMap() tea.Cmd {
+	if m.focus == focusTranslations {
+		return tui.SetKeyMap(m.translations.KeyMapHelper(
+			keys.FocusNext, keys.AddTranslation, keys.DeleteTranslation,
+		))
+	}
+	return tui.SetKeyMap(keys)
 }
 
 func (m Model) loadWordDetails() tea.Msg {
@@ -105,6 +122,26 @@ func (m Model) loadWordDetails() tea.Msg {
 	}
 
 	return wordLoadedMsg{Word: wordDetails}
+}
+
+func (m Model) loadTranslations() tea.Msg {
+	translations, err := m.services.Storage.ListTranslations(m.wordID)
+	if err != nil {
+		slog.Error("unable to get translations", "error", err)
+		return nil
+	}
+
+	return translationsLoadedMsg{translations: translations}
+}
+
+func (m Model) deleteTranslation(id int) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.services.Storage.DeleteTranslation(id); err != nil {
+			slog.Error("unable to delete translation", "error", err)
+		}
+
+		return m.loadTranslations()
+	}
 }
 
 func (m Model) saveWordDetails() tea.Msg {
@@ -146,6 +183,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.switchKindButton.Content = switchKindLabel(m.word.Kind)
 		m = m.computeLayout()
+	case translationsLoadedMsg:
+		return m.handleTranslationsLoadedMsg(msg)
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -157,11 +196,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch {
 		case key.Matches(msg, keys.FocusNext):
-			return m.moveFocus(1), nil
+			return m.moveFocus(1)
 		case key.Matches(msg, keys.FocusPrev):
-			return m.moveFocus(-1), nil
+			return m.moveFocus(-1)
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
+		case key.Matches(msg, keys.AddTranslation):
+			return m, m.pushTranslationPicker()
+		case m.focus == focusTranslations && key.Matches(msg, keys.DeleteTranslation):
+			return m.handleDeleteTranslationPressed()
 		}
 	case editPressedMsg:
 		return m, tui.PushModal(inputmodal.New(inputmodal.Config{
@@ -171,12 +214,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			SubmitHelp:  "valider le texte",
 			OnSubmit:    textSubmitted,
 		}))
+	case addTranslationPressedMsg:
+		return m, m.pushTranslationPicker()
 	case textSubmittedMsg:
 		return m.handleTextSubmittedMsg(msg)
 	case switchKindPressedMsg:
 		return m.handleSwitchKindPressedMsg()
 	case kindChangeConfirmedMsg:
 		return m, m.changeKind(msg.kind)
+	case translationDeleteConfirmedMsg:
+		return m, m.deleteTranslation(msg.id)
 	case deleteConfirmedMsg:
 		return m, m.deleteWord
 	case wordDeletedMsg:
@@ -184,13 +231,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Components ignore keys when they don't have focus
-	var translationsCmd, editCmd, switchKindCmd, deleteCmd tea.Cmd
+	var translationsCmd, editCmd, switchKindCmd, addTranslationCmd, deleteCmd tea.Cmd
 	m.translations, translationsCmd = m.translations.Update(msg)
 	m.editButton, editCmd = m.editButton.Update(msg)
 	m.switchKindButton, switchKindCmd = m.switchKindButton.Update(msg)
+	m.addTranslationButton, addTranslationCmd = m.addTranslationButton.Update(msg)
 	m.deleteButton, deleteCmd = m.deleteButton.Update(msg)
 
-	return m, tea.Batch(translationsCmd, editCmd, switchKindCmd, deleteCmd)
+	return m, tea.Batch(translationsCmd, editCmd, switchKindCmd, addTranslationCmd, deleteCmd)
 }
 
 // applyFocus propagates m.focus to the components.
@@ -198,16 +246,22 @@ func (m Model) applyFocus() Model {
 	m.translations.Focused = m.focus == focusTranslations
 	m.editButton.Focused = m.focus == focusEditWord
 	m.switchKindButton.Focused = m.focus == focusSwitchKind
+	m.addTranslationButton.Focused = m.focus == focusAddTranslation
 	m.deleteButton.Focused = m.focus == focusDeleteWord
 	return m
 }
 
-func (m Model) moveFocus(step focus) Model {
+func (m Model) moveFocus(step focus) (Model, tea.Cmd) {
 	m.focus = (m.focus + focusOverflowed + step) % focusOverflowed
 	if m.focus == focusSwitchKind && !config.IsForGM {
 		m.focus = (m.focus + focusOverflowed + step) % focusOverflowed
 	}
-	return m.applyFocus()
+	m = m.applyFocus()
+	return m, m.setKeyMap()
+}
+
+func (m Model) pushTranslationPicker() tea.Cmd {
+	return tui.PushPage(translationpicker.NewModel(m.wordID, m.services))
 }
 
 func (m Model) handleSwitchKindPressedMsg() (Model, tea.Cmd) {
@@ -228,6 +282,33 @@ func (m Model) handleSwitchKindPressedMsg() (Model, tea.Cmd) {
 	}))
 }
 
+func (m Model) handleTranslationsLoadedMsg(msg translationsLoadedMsg) (Model, tea.Cmd) {
+	m.links = msg.translations
+
+	words := make([]storage.Word, len(m.links))
+	for i, link := range m.links {
+		words[i] = link.Word
+	}
+
+	var cmd tea.Cmd
+	m.translations, cmd = m.translations.SetItems(words)
+	return m, cmd
+}
+
+func (m Model) handleDeleteTranslationPressed() (Model, tea.Cmd) {
+	if _, ok := m.translations.SelectedWord(); !ok {
+		return m, nil
+	}
+
+	// The list items are built from m.links, in the same order
+	link := m.links[m.translations.GlobalIndex()]
+	return m, tui.PushModal(confirmmodal.New(confirmmodal.Config{
+		Title:        fmt.Sprintf("Supprimer le lien avec « %s » ?", link.Word.Text),
+		ConfirmLabel: "Supprimer le lien",
+		OnConfirm:    func() tea.Msg { return translationDeleteConfirmedMsg{id: link.ID} },
+	}))
+}
+
 func (m Model) handleTextSubmittedMsg(msg textSubmittedMsg) (Model, tea.Cmd) {
 	text := strings.TrimSpace(msg.text)
 	if text == "" || text == m.word.Text {
@@ -244,17 +325,19 @@ func (m Model) computeLayout() Model {
 	for _, b := range []*button.Model{
 		&m.switchKindButton,
 		&m.editButton,
+		&m.addTranslationButton,
 		&m.deleteButton,
 	} {
 		b.Width = lipgloss.Width(b.Content) + b.Style.GetHorizontalFrameSize()
 		b.Height = b.Style.GetVerticalFrameSize() + 1
 	}
 
-	// The header row is as tall as its buttons, the delete row as its button
+	// The header and footer rows are as tall as their buttons
 	headerHeight := m.editButton.Height
+	footerHeight := m.deleteButton.Height
 	m.translations = m.translations.SetSize(
 		m.width,
-		m.height-headerHeight-m.deleteButton.Height,
+		m.height-headerHeight-footerHeight,
 	)
 
 	return m
@@ -280,7 +363,11 @@ func (m Model) View() tea.View {
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		lipgloss.JoinHorizontal(lipgloss.Center, word, buttons),
 		m.translations.View().Content,
-		m.deleteButton.View(),
+		lipgloss.JoinHorizontal(
+			lipgloss.Center,
+			m.addTranslationButton.View(), strings.Repeat(" ", buttonGap),
+			m.deleteButton.View(),
+		),
 	)
 
 	return tea.NewView(lipgloss.Place(

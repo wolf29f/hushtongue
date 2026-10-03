@@ -9,6 +9,8 @@ type switchKindPressedMsg struct{}
 
 type editPressedMsg struct{}
 
+type addTranslationPressedMsg struct{}
+
 type deleteConfirmedMsg struct{}
 
 type wordDeletedMsg struct{}
@@ -29,4 +31,12 @@ func textSubmitted(text string) tea.Cmd {
 
 type wordLoadedMsg struct {
 	Word storage.WordDetails
+}
+
+type translationsLoadedMsg struct {
+	translations []storage.Translation
+}
+
+type translationDeleteConfirmedMsg struct {
+	id int
 }

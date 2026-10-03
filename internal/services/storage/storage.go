@@ -8,4 +8,6 @@ type Storage interface {
 	SaveWord(word WordDetails) (WordDetails, error)
 	DeleteWord(id int) error
 	ChangeWordKind(id int, kind string) (WordDetails, error)
+	ListTranslations(wordID int) ([]Translation, error)
+	DeleteTranslation(id int) error
 }

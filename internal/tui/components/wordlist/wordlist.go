@@ -72,6 +72,10 @@ func NewModel(words []storage.Word) Model {
 	l.KeyMap.ClearFilter.SetHelp("esc", "effacer le filtre")
 	l.KeyMap.Quit.SetHelp("q", "quitter")
 	l.KeyMap.CloseFullHelp.SetHelp("?", "fermer l'aide")
+	// Unbound rather than disabled: the list re-enables them on resize.
+	// Long lists are browsed with the filter instead.
+	l.KeyMap.NextPage.Unbind()
+	l.KeyMap.PrevPage.Unbind()
 
 	return Model{
 		Model:        l,
@@ -103,6 +107,12 @@ func (m Model) SetItems(words []storage.Word) (Model, tea.Cmd) {
 	}
 	cmd := m.Model.SetItems(items)
 	return m, cmd
+}
+
+// SelectedWord returns the word under the cursor, if any.
+func (m Model) SelectedWord() (storage.Word, bool) {
+	i, ok := m.SelectedItem().(item)
+	return storage.Word(i), ok
 }
 
 func (m Model) Init() tea.Cmd {
@@ -161,10 +171,16 @@ func (m Model) View() tea.View {
 	))
 }
 
-func (m Model) KeyMapHelper() tui.KeyMapHelper {
+// KeyMapHelper returns the list's keymap, extended with the parent's extra
+// bindings.
+func (m Model) KeyMapHelper(extra ...key.Binding) tui.KeyMapHelper {
+	fullHelp := m.FullHelp()
+	if len(extra) > 0 {
+		fullHelp = append(fullHelp, extra)
+	}
 	return keyMapHelper{
-		shortHelp: m.ShortHelp(),
-		fullHelp:  m.FullHelp(),
+		shortHelp: append(m.ShortHelp(), extra...),
+		fullHelp:  fullHelp,
 		helpKey:   m.KeyMap.ShowFullHelp,
 	}
 }
