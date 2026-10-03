@@ -13,6 +13,17 @@ var (
 	Vowels     = []byte{'a', 'e', 'i', 'o', 'u'}
 )
 
+// Kind distinguishes the kind of word to generate, which constrains its
+// shape: roots are full words (2-3 syllables), affixes are short (1
+// syllable) so they stay light once attached to a root.
+type Kind int
+
+const (
+	KindRoot Kind = iota
+	KindPrefix
+	KindSuffix
+)
+
 // hashSeed computes a stable 32-bit hash for a given string (FNV-1a,
 // stdlib, no homemade implementation to maintain).
 func hashSeed(s string) uint32 {
@@ -43,16 +54,35 @@ func (s *splitmix32) intn(n int) int {
 	return int(s.next() % uint32(n))
 }
 
-// buildFromSeed builds a CV/V word from a seed: 2 or 3 syllables, ~85% of
-// syllables start with a consonant, never two identical vowels in a row,
-// never a final consonant or a consonant cluster.
-func buildFromSeed(seed uint32) string {
+// buildFromSeed builds a word from a seed, in a shape that depends on kind:
+//   - root:   2-3 syllables, CV/V, same behavior as before
+//   - prefix: 1 syllable, always ends on a vowel (attaches cleanly in
+//     front of a root that starts with a consonant)
+//   - suffix: 1 syllable, always starts on a consonant (attaches cleanly
+//     behind a root that ends on a vowel — generated roots always end on
+//     a vowel under the current rules)
+//
+// In every case: ~85% of syllables start with a consonant (forced for a
+// suffix's first syllable), never two identical vowels in a row, never a
+// consonant cluster.
+func buildFromSeed(seed uint32, kind Kind) string {
 	rng := newSplitmix32(seed)
-	syllableCount := 2 + rng.intn(2) // 2 or 3
+
+	syllableCount := 2 + rng.intn(2) // 2 or 3, root default
+	if kind == KindPrefix || kind == KindSuffix {
+		syllableCount = 1
+	}
+
 	var word []byte
 	var lastVowel byte
 	for i := 0; i < syllableCount; i++ {
-		if rng.intn(100) < 85 {
+		startsWithConsonant := rng.intn(100) < 85
+		if kind == KindSuffix && i == 0 {
+			// first syllable of a suffix: always a consonant, this is
+			// the attachment constraint, not a dice roll
+			startsWithConsonant = true
+		}
+		if startsWithConsonant {
 			word = append(word, Consonants[rng.intn(len(Consonants))])
 		}
 		var v byte
@@ -68,18 +98,22 @@ func buildFromSeed(seed uint32) string {
 	return string(word)
 }
 
-// Generate produces a word for the given source key, deterministic and
-// unique with respect to exists. On collision (exists returns true), the
-// seed is re-derived from "key_1", "key_2", etc. — always deterministic,
-// never a true random draw.
-func Generate(sourceKey string, exists func(word string) bool) string {
+// Generate produces a word for the given source key and kind, deterministic
+// and unique with respect to exists. On collision (exists returns true),
+// the seed is re-derived from "key_1", "key_2", etc. — always
+// deterministic, never a true random draw.
+//
+// exists should be scoped by kind by the caller (e.g. check only against
+// other prefixes when generating a prefix), so a root can't accidentally
+// collide with an unrelated affix.
+func Generate(sourceKey string, kind Kind, exists func(word string) bool) string {
 	var word string
 	for attempt := 0; attempt < 50; attempt++ {
 		seedInput := sourceKey
 		if attempt > 0 {
 			seedInput = sourceKey + "_" + strconv.Itoa(attempt)
 		}
-		word = buildFromSeed(hashSeed(seedInput))
+		word = buildFromSeed(hashSeed(seedInput), kind)
 		if !exists(word) {
 			return word
 		}
