@@ -39,6 +39,7 @@ const (
 	focusEditWord
 	focusTranslations
 	focusAddTranslation
+	focusGenerateTranslation // only for MJ, on a source word
 	focusDeleteWord
 	focusOverflowed
 )
@@ -54,11 +55,12 @@ type Model struct {
 	focus   focus
 
 	// Components
-	translations         wordlist.Model
-	editButton           button.Model
-	switchKindButton     button.Model
-	addTranslationButton button.Model
-	deleteButton         button.Model
+	translations              wordlist.Model
+	editButton                button.Model
+	switchKindButton          button.Model
+	addTranslationButton      button.Model
+	generateTranslationButton button.Model
+	deleteButton              button.Model
 
 	// UI stuff
 	width, height int
@@ -81,6 +83,9 @@ func NewModel(wordID int, services *services.Services) Model {
 		),
 		addTranslationButton: button.New("Ajouter une traduction",
 			func() tea.Msg { return addTranslationPressedMsg{} },
+		),
+		generateTranslationButton: button.New("Générer une traduction",
+			func() tea.Msg { return generateTranslationPressedMsg{} },
 		),
 		deleteButton: button.New("Supprimer le mot", tui.PushModal(confirmmodal.New(confirmmodal.Config{
 			Title:        "Supprimer ce mot du dictionnaire ?\nSes liens de traduction seront aussi supprimés.",
@@ -231,14 +236,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Components ignore keys when they don't have focus
-	var translationsCmd, editCmd, switchKindCmd, addTranslationCmd, deleteCmd tea.Cmd
+	var translationsCmd, editCmd, switchKindCmd, addTranslationCmd, generateTranslationCmd, deleteCmd tea.Cmd
 	m.translations, translationsCmd = m.translations.Update(msg)
 	m.editButton, editCmd = m.editButton.Update(msg)
 	m.switchKindButton, switchKindCmd = m.switchKindButton.Update(msg)
 	m.addTranslationButton, addTranslationCmd = m.addTranslationButton.Update(msg)
+	m.generateTranslationButton, generateTranslationCmd = m.generateTranslationButton.Update(msg)
 	m.deleteButton, deleteCmd = m.deleteButton.Update(msg)
 
-	return m, tea.Batch(translationsCmd, editCmd, switchKindCmd, addTranslationCmd, deleteCmd)
+	return m, tea.Batch(translationsCmd, editCmd, switchKindCmd, addTranslationCmd, generateTranslationCmd, deleteCmd)
 }
 
 // applyFocus propagates m.focus to the components.
@@ -247,17 +253,24 @@ func (m Model) applyFocus() Model {
 	m.editButton.Focused = m.focus == focusEditWord
 	m.switchKindButton.Focused = m.focus == focusSwitchKind
 	m.addTranslationButton.Focused = m.focus == focusAddTranslation
+	m.generateTranslationButton.Focused = m.focus == focusGenerateTranslation
 	m.deleteButton.Focused = m.focus == focusDeleteWord
 	return m
 }
 
 func (m Model) moveFocus(step focus) (Model, tea.Cmd) {
 	m.focus = (m.focus + focusOverflowed + step) % focusOverflowed
-	if m.focus == focusSwitchKind && !config.IsForGM {
+	if m.focus == focusSwitchKind && !config.IsForGM ||
+		m.focus == focusGenerateTranslation && !m.canGenerate() {
 		m.focus = (m.focus + focusOverflowed + step) % focusOverflowed
 	}
 	m = m.applyFocus()
 	return m, m.setKeyMap()
+}
+
+// canGenerate reports whether a translation can be generated for the word.
+func (m Model) canGenerate() bool {
+	return config.IsForGM && m.word.Language == storage.LangSource
 }
 
 func (m Model) pushTranslationPicker() tea.Cmd {
@@ -326,6 +339,7 @@ func (m Model) computeLayout() Model {
 		&m.switchKindButton,
 		&m.editButton,
 		&m.addTranslationButton,
+		&m.generateTranslationButton,
 		&m.deleteButton,
 	} {
 		b.Width = lipgloss.Width(b.Content) + b.Style.GetHorizontalFrameSize()
@@ -360,14 +374,16 @@ func (m Model) View() tea.View {
 		wordStyle.Render(m.word.Text),
 	)
 
+	footerButtons := []string{m.addTranslationButton.View(), strings.Repeat(" ", buttonGap)}
+	if m.canGenerate() {
+		footerButtons = append(footerButtons, m.generateTranslationButton.View(), strings.Repeat(" ", buttonGap))
+	}
+	footerButtons = append(footerButtons, m.deleteButton.View())
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		lipgloss.JoinHorizontal(lipgloss.Center, word, buttons),
 		m.translations.View().Content,
-		lipgloss.JoinHorizontal(
-			lipgloss.Center,
-			m.addTranslationButton.View(), strings.Repeat(" ", buttonGap),
-			m.deleteButton.View(),
-		),
+		lipgloss.JoinHorizontal(lipgloss.Center, footerButtons...),
 	)
 
 	return tea.NewView(lipgloss.Place(

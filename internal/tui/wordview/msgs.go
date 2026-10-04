@@ -11,6 +11,8 @@ type editPressedMsg struct{}
 
 type addTranslationPressedMsg struct{}
 
+type generateTranslationPressedMsg struct{}
+
 type deleteConfirmedMsg struct{}
 
 type wordDeletedMsg struct{}
