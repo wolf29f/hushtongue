@@ -72,6 +72,9 @@ func NewModel(words []storage.Word) Model {
 	l.KeyMap.ClearFilter.SetHelp("esc", "effacer le filtre")
 	l.KeyMap.Quit.SetHelp("q", "quitter")
 	l.KeyMap.CloseFullHelp.SetHelp("?", "fermer l'aide")
+	// "g" is left to the pages, to generate a translation
+	l.KeyMap.GoToStart.SetKeys("home")
+	l.KeyMap.GoToStart.SetHelp("home", "aller au début")
 	// Unbound rather than disabled: the list re-enables them on resize.
 	// Long lists are browsed with the filter instead.
 	l.KeyMap.NextPage.Unbind()

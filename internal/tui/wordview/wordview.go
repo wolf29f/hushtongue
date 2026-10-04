@@ -110,14 +110,17 @@ func (m Model) Init() tea.Cmd {
 	)
 }
 
-// setKeyMap announces the help keymap, which depends on the focus.
+// setKeyMap announces the help keymap, which depends on the focus and on
+// the word.
 func (m Model) setKeyMap() tea.Cmd {
+	k := keys
+	k.GenerateTranslation.SetEnabled(m.canGenerate())
 	if m.focus == focusTranslations {
 		return tui.SetKeyMap(m.translations.KeyMapHelper(
-			keys.FocusNext, keys.AddTranslation, keys.DeleteTranslation,
+			k.FocusNext, k.AddTranslation, k.GenerateTranslation, k.DeleteTranslation,
 		))
 	}
-	return tui.SetKeyMap(keys)
+	return tui.SetKeyMap(k)
 }
 
 func (m Model) loadWordDetails() tea.Msg {
@@ -189,6 +192,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.switchKindButton.Content = switchKindLabel(m.word.Kind)
 		m = m.computeLayout()
+		return m, m.setKeyMap()
 	case translationsLoadedMsg:
 		return m.handleTranslationsLoadedMsg(msg)
 	case tea.WindowSizeMsg:
@@ -209,6 +213,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tui.PopPage
 		case key.Matches(msg, keys.AddTranslation):
 			return m, m.pushTranslationPicker()
+		case m.canGenerate() && key.Matches(msg, keys.GenerateTranslation):
+			return m, m.generateTranslationButton.OnPress
 		case m.focus == focusTranslations && key.Matches(msg, keys.DeleteTranslation):
 			return m.handleDeleteTranslationPressed()
 		}

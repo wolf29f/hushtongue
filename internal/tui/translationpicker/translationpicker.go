@@ -62,8 +62,15 @@ func NewModel(wordID int, services *services.Services) Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.loadWord,
-		tui.SetKeyMap(m.wordList.KeyMapHelper()),
+		m.setKeyMap(),
 	)
+}
+
+// setKeyMap announces the help keymap, which depends on the word.
+func (m Model) setKeyMap() tea.Cmd {
+	generate := keys.Generate
+	generate.SetEnabled(m.canGenerate())
+	return tui.SetKeyMap(m.wordList.KeyMapHelper(generate))
 }
 
 func (m Model) loadWord() tea.Msg {
@@ -94,7 +101,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case wordLoadedMsg:
 		m.word = msg.word
-		return m.computeLayout(), m.loadWords
+		m = m.computeLayout()
+		return m, tea.Batch(m.loadWords, m.setKeyMap())
 	case wordsLoadedMsg:
 		var cmd tea.Cmd
 		m.wordList, cmd = m.wordList.SetItems(msg.words)
@@ -119,6 +127,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.moveFocus(-1), nil
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
+		case m.canGenerate() && key.Matches(msg, keys.Generate):
+			return m, m.generateButton.OnPress
 		}
 	}
 

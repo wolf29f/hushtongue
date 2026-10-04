@@ -10,9 +10,10 @@ type keyMap struct {
 	FocusPrev key.Binding
 	HelpKey   key.Binding
 
-	AddTranslation    key.Binding
-	DeleteTranslation key.Binding
-	Quit              key.Binding
+	AddTranslation      key.Binding
+	GenerateTranslation key.Binding
+	DeleteTranslation   key.Binding
+	Quit                key.Binding
 }
 
 // ShortHelp returns keybindings to be shown in the mini help view. It's part
@@ -27,7 +28,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.FocusNext, k.FocusPrev},
 		{k.Enter},
-		{k.AddTranslation},
+		{k.AddTranslation, k.GenerateTranslation},
 		{k.HelpKey},
 		{k.Quit},
 	}
@@ -63,6 +64,10 @@ var keys = keyMap{
 	AddTranslation: key.NewBinding(
 		key.WithKeys("a"),
 		key.WithHelp("a", "ajouter une traduction"),
+	),
+	GenerateTranslation: key.NewBinding(
+		key.WithKeys("g"),
+		key.WithHelp("g", "générer une traduction"),
 	),
 	DeleteTranslation: key.NewBinding(
 		key.WithKeys("d", "backspace", "delete"),
