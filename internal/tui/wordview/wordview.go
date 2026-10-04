@@ -16,6 +16,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui/components/confirmmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/components/inputmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/components/wordlist"
+	"github.com/wolf29f/hushtongue/internal/tui/translationgenerator"
 	"github.com/wolf29f/hushtongue/internal/tui/translationpicker"
 )
 
@@ -221,6 +222,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}))
 	case addTranslationPressedMsg:
 		return m, m.pushTranslationPicker()
+	case generateTranslationPressedMsg:
+		return m, tui.PushPage(translationgenerator.NewModel(m.wordID, m.services))
 	case textSubmittedMsg:
 		return m.handleTextSubmittedMsg(msg)
 	case switchKindPressedMsg:

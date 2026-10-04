@@ -97,6 +97,31 @@ func (dao *DAO) ListWords(language string) ([]storage.Word, error) {
 	return words, nil
 }
 
+func (dao *DAO) ListWordDetails(language string) ([]storage.WordDetails, error) {
+	rows, err := dao.DB.Query("SELECT id, lang, text, normalized, kind FROM words WHERE lang = ?", language)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("Failed to close rows", "error", err)
+		}
+	}()
+
+	words := make([]storage.WordDetails, 0)
+	for rows.Next() {
+		var word storage.WordDetails
+		if err := rows.Scan(&word.ID, &word.Language, &word.Text, &word.Normalized, &word.Kind); err != nil {
+			return nil, err
+		}
+		words = append(words, word)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return words, nil
+}
+
 func (dao *DAO) AddWord(language, word string) error {
 	normalized := normalize(word)
 	_, err := dao.DB.Exec("INSERT INTO words (lang, text, normalized) VALUES (?, ?, ?)", language, word, normalized)
@@ -220,5 +245,73 @@ func (dao *DAO) ListTranslations(wordID int) ([]storage.Translation, error) {
 // DeleteTranslation deletes the translation link, not its words.
 func (dao *DAO) DeleteTranslation(id int) error {
 	_, err := dao.DB.Exec("DELETE FROM translations WHERE id = ?", id)
+	return err
+}
+
+// SaveGeneratedTranslation links each part to its con translation, creating
+// the missing words and links. With several parts, it also links wordID to
+// the concatenation of the con parts, stored as a con root.
+func (dao *DAO) SaveGeneratedTranslation(wordID int, parts []storage.TranslationPart) error {
+	tx, err := dao.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	var full strings.Builder
+	for _, part := range parts {
+		sourceID := part.SourceID
+		if sourceID == 0 {
+			if sourceID, err = upsertWord(tx, storage.LangSource, part.Source, part.Kind); err != nil {
+				return err
+			}
+		}
+		conID := part.ConID
+		if conID == 0 {
+			if conID, err = upsertWord(tx, storage.LangCon, part.Con, part.Kind); err != nil {
+				return err
+			}
+		}
+		if err := linkGenerated(tx, sourceID, conID); err != nil {
+			return err
+		}
+		full.WriteString(part.Con)
+	}
+
+	if len(parts) > 1 {
+		fullID, err := upsertWord(tx, storage.LangCon, full.String(), storage.KindRoot)
+		if err != nil {
+			return err
+		}
+		if err := linkGenerated(tx, wordID, fullID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// upsertWord returns the id of the word, inserting it when missing.
+func upsertWord(tx *sql.Tx, language, text, kind string) (int, error) {
+	var id int
+	err := tx.QueryRow(
+		"INSERT INTO words (lang, text, normalized, kind) VALUES (?, ?, ?, ?) "+
+			"ON CONFLICT (lang, normalized, kind) DO UPDATE SET text = text RETURNING id",
+		language, text, normalize(text), kind,
+	).Scan(&id)
+	return id, err
+}
+
+// linkGenerated links the two words, unless they already are.
+func linkGenerated(tx *sql.Tx, sourceID, conID int) error {
+	_, err := tx.Exec(
+		"INSERT INTO translations (source_word_id, con_word_id, source) VALUES (?, ?, 'generated') "+
+			"ON CONFLICT (source_word_id, con_word_id) DO NOTHING",
+		sourceID, conID,
+	)
 	return err
 }

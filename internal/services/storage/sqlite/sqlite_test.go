@@ -318,6 +318,108 @@ func TestDeleteTranslation(t *testing.T) {
 	})
 }
 
+func TestListWordDetails(t *testing.T) {
+	t.Run("lists the words of the language with their details", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		re := insertWord(t, dao, "source", "re", "prefix")
+		insertWord(t, dao, "con", "ailo", "root")
+
+		got, err := dao.ListWordDetails(storage.LangSource)
+		if err != nil {
+			t.Fatalf("ListWordDetails() failed: %v", err)
+		}
+		want := []storage.WordDetails{
+			{ID: mer, Language: "source", Text: "mer", Normalized: "mer", Kind: "root"},
+			{ID: re, Language: "source", Text: "re", Normalized: "re", Kind: "prefix"},
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("ListWordDetails(source) = %v, want %v", got, want)
+		}
+	})
+}
+
+func TestSaveGeneratedTranslation(t *testing.T) {
+	t.Run("creates the missing words and links, and the compound", func(t *testing.T) {
+		dao := newTestDAO(t)
+		refaite := insertWord(t, dao, "source", "Refaîte", "root")
+		re := insertWord(t, dao, "source", "re", "prefix")
+		ki := insertWord(t, dao, "con", "ki", "prefix")
+		insertTranslation(t, dao, re, ki)
+
+		err := dao.SaveGeneratedTranslation(refaite, []storage.TranslationPart{
+			{Kind: "prefix", SourceID: re, Source: "re", ConID: ki, Con: "ki"},
+			{Kind: "root", Source: "faîte", Con: "mola"},
+		})
+		if err != nil {
+			t.Fatalf("SaveGeneratedTranslation() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, re, "ki")
+		assertTranslations(t, dao, refaite, "kimola")
+		faite := findWord(t, dao, "source", "faîte", "root")
+		assertTranslations(t, dao, faite, "mola")
+	})
+
+	t.Run("links a single part to the word itself", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+
+		err := dao.SaveGeneratedTranslation(mer, []storage.TranslationPart{
+			{Kind: "root", SourceID: mer, Source: "mer", Con: "ailo"},
+		})
+		if err != nil {
+			t.Fatalf("SaveGeneratedTranslation() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, mer, "ailo")
+	})
+
+	t.Run("reuses existing words and links", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+		insertTranslation(t, dao, mer, ailo)
+
+		err := dao.SaveGeneratedTranslation(mer, []storage.TranslationPart{
+			{Kind: "root", SourceID: mer, Source: "mer", Con: "ailo"},
+		})
+		if err != nil {
+			t.Fatalf("SaveGeneratedTranslation() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, mer, "ailo")
+	})
+}
+
+func findWord(t *testing.T, dao *sqlite.DAO, lang, text, kind string) int {
+	t.Helper()
+	var id int
+	err := dao.DB.QueryRow(
+		`SELECT id FROM words WHERE lang = ? AND text = ? AND kind = ?`,
+		lang, text, kind,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("finding word %q: %v", text, err)
+	}
+	return id
+}
+
+func assertTranslations(t *testing.T, dao *sqlite.DAO, wordID int, want ...string) {
+	t.Helper()
+	translations, err := dao.ListTranslations(wordID)
+	if err != nil {
+		t.Fatalf("ListTranslations() failed: %v", err)
+	}
+	got := make([]string, len(translations))
+	for i, translation := range translations {
+		got[i] = translation.Word.Text
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("translations of word %d = %v, want %v", wordID, got, want)
+	}
+}
+
 func newTestDAO(t *testing.T) *sqlite.DAO {
 	t.Helper()
 	dao, err := sqlite.Load(filepath.Join(t.TempDir(), "test.db"))

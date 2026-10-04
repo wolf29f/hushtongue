@@ -4,10 +4,12 @@ type Storage interface {
 	Init() error
 	AddWord(language, word string) error
 	ListWords(language string) ([]Word, error)
+	ListWordDetails(language string) ([]WordDetails, error)
 	GetWord(id int) (WordDetails, error)
 	SaveWord(word WordDetails) (WordDetails, error)
 	DeleteWord(id int) error
 	ChangeWordKind(id int, kind string) (WordDetails, error)
 	ListTranslations(wordID int) ([]Translation, error)
 	DeleteTranslation(id int) error
+	SaveGeneratedTranslation(wordID int, parts []TranslationPart) error
 }

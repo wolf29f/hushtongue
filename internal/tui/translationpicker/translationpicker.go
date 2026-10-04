@@ -12,6 +12,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
 	"github.com/wolf29f/hushtongue/internal/tui/components/wordlist"
+	"github.com/wolf29f/hushtongue/internal/tui/translationgenerator"
 )
 
 type focus int
@@ -98,6 +99,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.wordList, cmd = m.wordList.SetItems(msg.words)
 		return m, cmd
+	case generatePressedMsg:
+		// Replaced rather than pushed: leaving the generator goes back to
+		// the word, not to this picker
+		return m, tui.ReplacePage(translationgenerator.NewModel(m.wordID, m.services))
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
