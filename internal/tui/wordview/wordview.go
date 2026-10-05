@@ -117,7 +117,7 @@ func (m Model) setKeyMap() tea.Cmd {
 	k.GenerateTranslation.SetEnabled(m.canGenerate())
 	if m.focus == focusTranslations {
 		return tui.SetKeyMap(m.translations.KeyMapHelper(
-			k.FocusNext, k.AddTranslation, k.GenerateTranslation, k.DeleteTranslation,
+			k.FocusNext, k.OpenTranslation, k.AddTranslation, k.GenerateTranslation, k.DeleteTranslation,
 		))
 	}
 	return tui.SetKeyMap(k)
@@ -242,6 +242,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.changeKind(msg.kind)
 	case translationDeleteConfirmedMsg:
 		return m, m.deleteTranslation(msg.id)
+	case wordlist.WordSelectedMsg:
+		return m, tui.PushPage(NewModel(msg.ID, m.services))
 	case deleteConfirmedMsg:
 		return m, m.deleteWord
 	case wordDeletedMsg:

@@ -10,6 +10,7 @@ type keyMap struct {
 	FocusPrev key.Binding
 	HelpKey   key.Binding
 
+	OpenTranslation     key.Binding
 	AddTranslation      key.Binding
 	GenerateTranslation key.Binding
 	DeleteTranslation   key.Binding
@@ -60,6 +61,10 @@ var keys = keyMap{
 	Quit: key.NewBinding(
 		key.WithKeys("q", "esc"),
 		key.WithHelp("q", "quitter"),
+	),
+	OpenTranslation: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("⏎", "ouvrir la traduction"),
 	),
 	AddTranslation: key.NewBinding(
 		key.WithKeys("a"),

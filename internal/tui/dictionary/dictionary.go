@@ -209,9 +209,9 @@ func switchLangLabel(lang string) string {
 
 func (m Model) computeLayout() Model {
 
-	leftWidth := m.width / 3
+	columnWidth := m.width / 3
 	// Buttons share the width equally, the gap absorbs the remainder
-	buttonWidth := (leftWidth - minButtonGap) / 2
+	buttonWidth := (columnWidth - minButtonGap) / 2
 
 	m.addButton.Width = buttonWidth
 	m.addButton.Height = m.addButton.Style.GetVerticalFrameSize() + 1
@@ -219,7 +219,7 @@ func (m Model) computeLayout() Model {
 	m.switchLangButton.Width = buttonWidth
 	m.switchLangButton.Height = m.switchLangButton.Style.GetVerticalFrameSize() + 1
 
-	m.wordList = m.wordList.SetSize(leftWidth, m.height-m.addButton.Height)
+	m.wordList = m.wordList.SetSize(columnWidth, m.height-m.addButton.Height)
 
 	return m
 }
@@ -227,7 +227,7 @@ func (m Model) computeLayout() Model {
 func (m Model) View() tea.View {
 	gap := m.width/3 - m.addButton.Width - m.switchLangButton.Width
 
-	leftColumn := lipgloss.JoinVertical(lipgloss.Top,
+	column := lipgloss.JoinVertical(lipgloss.Top,
 		lipgloss.JoinHorizontal(
 			lipgloss.Center,
 			m.addButton.View(),
@@ -237,11 +237,9 @@ func (m Model) View() tea.View {
 		m.wordList.View().Content,
 	)
 
-	horizontalContent := lipgloss.JoinHorizontal(lipgloss.Center, leftColumn, "->")
-
 	return tea.NewView(lipgloss.Place(
 		m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
-		horizontalContent,
+		column,
 	))
 }
