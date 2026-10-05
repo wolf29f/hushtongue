@@ -123,13 +123,13 @@ func (m Model) load() tea.Msg {
 	word, err := m.services.Storage.GetWord(m.wordID)
 	if err != nil {
 		slog.Error("unable to get word details", "error", err)
-		return nil
+		return tui.ShowError("Impossible de charger le mot.")()
 	}
 
 	proposals, err := m.services.Translation.Propose(m.wordID)
 	if err != nil {
 		slog.Error("unable to propose translations", "error", err)
-		return nil
+		return tui.ShowError("Impossible de calculer les propositions de traduction.")()
 	}
 
 	return loadedMsg{word: word, proposals: proposals}
@@ -139,7 +139,7 @@ func (m Model) apply(proposal translation.Proposal) tea.Cmd {
 	return func() tea.Msg {
 		if err := m.services.Translation.Apply(m.wordID, proposal); err != nil {
 			slog.Error("unable to save translation", "error", err)
-			return nil
+			return tui.ShowError("Impossible d'enregistrer la traduction.")()
 		}
 		return tui.PopPage()
 	}

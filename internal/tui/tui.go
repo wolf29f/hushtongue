@@ -10,8 +10,11 @@ import (
 )
 
 type RootModel struct {
-	stack         []tea.Model
-	modal         tea.Model
+	stack []tea.Model
+	modal tea.Model
+	// errors queues the messages of the error modal, shown above the page
+	// and the modal, front first.
+	errors        []string
 	width, height int
 
 	// Help related fields
@@ -19,8 +22,11 @@ type RootModel struct {
 	// pageKeyMap holds the page's keymap while a modal is open, so it can
 	// be restored when the modal closes.
 	pageKeyMap KeyMapHelper
-	help       help.Model
-	footer     string
+	// hiddenKeyMap holds the page's or modal's keymap while the error modal
+	// is open.
+	hiddenKeyMap KeyMapHelper
+	help         help.Model
+	footer       string
 }
 
 func NewRootModel(initialPage tea.Model) RootModel {
@@ -79,12 +85,18 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return tea.WindowSizeMsg{Width: m.width, Height: m.height}
 			}
 		}
+		// The error modal swallows every key
+		if len(m.errors) > 0 {
+			if press, ok := msg.(tea.KeyPressMsg); ok && key.Matches(press, errorKeys.Close) {
+				return m.dismissError(), m.sizeCmd()
+			}
+			return m, nil
+		}
 
 	case pushPageMsg:
 		// The pushed page hasn't announced a keymap yet: don't keep showing
 		// the previous page's help for something no longer on screen.
-		m.keyMap = nil
-		m.footer = m.helpView()
+		m = m.setKeyMap(nil)
 		m.stack = append(m.stack, msg.page)
 		return m, tea.Batch(msg.page.Init(), m.sizeCmd())
 
@@ -94,36 +106,41 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Re-init the revealed page so it refreshes its data and
 		// re-announces its keymap.
-		m.keyMap = nil
-		m.footer = m.helpView()
+		m = m.setKeyMap(nil)
 		top := len(m.stack) - 1
 		return m, tea.Batch(m.stack[top].Init(), m.sizeCmd())
 
 	case replacePageMsg:
-		m.keyMap = nil
-		m.footer = m.helpView()
+		m = m.setKeyMap(nil)
 		top := len(m.stack) - 1
 		m.stack[top] = msg.page
 		return m, tea.Batch(msg.page.Init(), m.sizeCmd())
 
 	case pushKeyMapMsg:
 		slog.Debug("received keymap msg")
-		m.keyMap = msg.keyMap
-		m.footer = m.helpView()
+		m = m.setKeyMap(msg.keyMap)
 		slog.Debug("updated keymap msg", "keyMap", m.keyMap, "footer", m.footer)
 		return m, m.sizeCmd()
 
 	case pushModalMsg:
-		m.pageKeyMap = m.keyMap
+		m.pageKeyMap = m.underlyingKeyMap()
 		m.modal = msg.modal
 		return m, tea.Batch(msg.modal.Init(), m.sizeCmd())
 	case popModalMsg:
 		// Only restore the page's keymap: re-initializing the page here
 		// would race with the modal's result message.
 		m.modal = nil
-		m.keyMap = m.pageKeyMap
+		m = m.setKeyMap(m.pageKeyMap)
 		m.pageKeyMap = nil
-		m.footer = m.helpView()
+		return m, m.sizeCmd()
+
+	case showErrorMsg:
+		if len(m.errors) == 0 {
+			m.hiddenKeyMap = m.keyMap
+			m.keyMap = errorKeys
+			m.footer = m.helpView()
+		}
+		m.errors = append(m.errors, msg.message)
 		return m, m.sizeCmd()
 	}
 
@@ -138,6 +155,37 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.stack[top].Update(msg)
 	m.stack[top] = updated
 	return m, cmd
+}
+
+// setKeyMap sets the page's or modal's keymap. While the error modal is open,
+// it is kept aside until the last error is dismissed.
+func (m RootModel) setKeyMap(keyMap KeyMapHelper) RootModel {
+	if len(m.errors) > 0 {
+		m.hiddenKeyMap = keyMap
+		return m
+	}
+	m.keyMap = keyMap
+	m.footer = m.helpView()
+	return m
+}
+
+// underlyingKeyMap returns the page's or modal's keymap, even while the error
+// modal is open.
+func (m RootModel) underlyingKeyMap() KeyMapHelper {
+	if len(m.errors) > 0 {
+		return m.hiddenKeyMap
+	}
+	return m.keyMap
+}
+
+func (m RootModel) dismissError() RootModel {
+	m.errors = m.errors[1:]
+	if len(m.errors) == 0 {
+		m.keyMap = m.hiddenKeyMap
+		m.hiddenKeyMap = nil
+		m.footer = m.helpView()
+	}
+	return m
 }
 
 func (m RootModel) helpView() string {
@@ -155,28 +203,28 @@ func (m RootModel) helpView() string {
 }
 
 func (m RootModel) View() tea.View {
-
 	pageView := m.stack[len(m.stack)-1].View()
 	pageView.Content = pageView.Content + "\n" + m.footer
+	pageView.AltScreen = true
 
-	if m.modal != nil {
-		modalContent := m.modal.View().Content
-		pageContent := pageView.Content
-
-		mw, mh := lipgloss.Size(modalContent)
-		mx := (m.width - mw) / 2
-		my := (m.height - mh) / 2
-
-		modal := lipgloss.NewLayer(m.modal.View().Content).Z(1).X(mx).Y(my)
-		page := lipgloss.NewLayer(pageContent).Z(0)
-
-		output := lipgloss.NewCompositor(modal, page).Render()
-
-		v := tea.NewView(output)
-		v.AltScreen = true
-		return v
+	if m.modal == nil && len(m.errors) == 0 {
+		return pageView
 	}
 
-	pageView.AltScreen = true
-	return pageView
+	layers := []*lipgloss.Layer{lipgloss.NewLayer(pageView.Content).Z(0)}
+	if m.modal != nil {
+		layers = append(layers, m.centeredLayer(m.modal.View().Content).Z(1))
+	}
+	if len(m.errors) > 0 {
+		layers = append(layers, m.centeredLayer(errorModalView(m.errors[0])).Z(2))
+	}
+
+	v := tea.NewView(lipgloss.NewCompositor(layers...).Render())
+	v.AltScreen = true
+	return v
+}
+
+func (m RootModel) centeredLayer(content string) *lipgloss.Layer {
+	w, h := lipgloss.Size(content)
+	return lipgloss.NewLayer(content).X((m.width - w) / 2).Y((m.height - h) / 2)
 }

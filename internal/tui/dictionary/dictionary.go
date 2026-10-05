@@ -1,6 +1,7 @@
 package dictionary
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -95,7 +96,7 @@ func (m Model) loadWords() tea.Msg {
 	words, err := m.services.Storage.ListWords(m.language)
 	if err != nil {
 		slog.Error("unable to get words", "error", err)
-		return nil
+		return tui.ShowError("Impossible de charger le dictionnaire.")()
 	}
 	return wordsLoadedMsg{words: words}
 }
@@ -155,13 +156,14 @@ func (m Model) handleWordSubmittedMsg(msg wordSubmittedMsg) (tea.Model, tea.Cmd)
 
 	if err := m.services.Storage.AddWord(m.language, msg.word); err != nil {
 		slog.Error("unable to add word", "error", err)
+		return m, tui.ShowError(fmt.Sprintf("Impossible d'ajouter le mot « %s ».", msg.word))
 	}
 
 	// Refresh the word list after adding a new word
 	wordList, err := m.services.Storage.ListWords(m.language)
 	if err != nil {
 		slog.Error("unable to get words", "error", err)
-		return m, nil
+		return m, tui.ShowError("Impossible de charger le dictionnaire.")
 	}
 
 	var cmd tea.Cmd
@@ -183,7 +185,7 @@ func (m Model) handleLangSwitch() (tea.Model, tea.Cmd) {
 	wordList, err := m.services.Storage.ListWords(m.language)
 	if err != nil {
 		slog.Error("unable to get words", "error", err)
-		return m, nil
+		return m, tui.ShowError("Impossible de charger le dictionnaire.")
 	}
 
 	var cmd tea.Cmd

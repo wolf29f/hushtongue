@@ -77,7 +77,7 @@ func (m Model) loadWord() tea.Msg {
 	word, err := m.services.Storage.GetWord(m.wordID)
 	if err != nil {
 		slog.Error("unable to get word details", "error", err)
-		return nil
+		return tui.ShowError("Impossible de charger le mot.")()
 	}
 	return wordLoadedMsg{word: word}
 }
@@ -92,7 +92,7 @@ func (m Model) loadWords() tea.Msg {
 	words, err := m.services.Storage.ListWords(language)
 	if err != nil {
 		slog.Error("unable to get words", "error", err)
-		return nil
+		return tui.ShowError("Impossible de charger les mots.")()
 	}
 	return wordsLoadedMsg{words: words}
 }

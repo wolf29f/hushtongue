@@ -127,7 +127,10 @@ func (m Model) loadWordDetails() tea.Msg {
 	wordDetails, err := m.services.Storage.GetWord(m.wordID)
 	if err != nil {
 		slog.Error("unable to get word details", "error", err)
-		return wordLoadedMsg{Word: storage.WordDetails{}}
+		return tea.Batch(
+			tui.ShowError("Impossible de charger le mot."),
+			func() tea.Msg { return wordLoadedMsg{Word: storage.WordDetails{}} },
+		)()
 	}
 
 	return wordLoadedMsg{Word: wordDetails}
@@ -137,7 +140,7 @@ func (m Model) loadTranslations() tea.Msg {
 	translations, err := m.services.Storage.ListTranslations(m.wordID)
 	if err != nil {
 		slog.Error("unable to get translations", "error", err)
-		return nil
+		return tui.ShowError("Impossible de charger les traductions.")()
 	}
 
 	return translationsLoadedMsg{translations: translations}
@@ -147,6 +150,7 @@ func (m Model) deleteTranslation(id int) tea.Cmd {
 	return func() tea.Msg {
 		if err := m.services.Storage.DeleteTranslation(id); err != nil {
 			slog.Error("unable to delete translation", "error", err)
+			return tea.Batch(tui.ShowError("Impossible de supprimer la traduction."), m.loadTranslations)()
 		}
 
 		return m.loadTranslations()
@@ -158,7 +162,7 @@ func (m Model) saveWordDetails() tea.Msg {
 	if err != nil {
 		slog.Error("unable to save word details", "error", err)
 		// Reload the stored word to discard the rejected edit
-		return m.loadWordDetails()
+		return tea.Batch(tui.ShowError("Impossible d'enregistrer le mot."), m.loadWordDetails)()
 	}
 
 	return wordLoadedMsg{Word: wordDetails}
@@ -169,7 +173,7 @@ func (m Model) changeKind(kind string) tea.Cmd {
 		wordDetails, err := m.services.Storage.ChangeWordKind(m.wordID, kind)
 		if err != nil {
 			slog.Error("unable to change word kind", "error", err)
-			return m.loadWordDetails()
+			return tea.Batch(tui.ShowError("Impossible de changer le type du mot."), m.loadWordDetails)()
 		}
 
 		return wordLoadedMsg{Word: wordDetails}
@@ -179,7 +183,7 @@ func (m Model) changeKind(kind string) tea.Cmd {
 func (m Model) deleteWord() tea.Msg {
 	if err := m.services.Storage.DeleteWord(m.wordID); err != nil {
 		slog.Error("unable to delete word", "error", err)
-		return nil
+		return tui.ShowError("Impossible de supprimer le mot.")()
 	}
 
 	return wordDeletedMsg{}
