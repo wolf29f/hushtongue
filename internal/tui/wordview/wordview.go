@@ -1,6 +1,7 @@
 package wordview
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -160,12 +161,26 @@ func (m Model) deleteTranslation(id int) tea.Cmd {
 func (m Model) saveWordDetails() tea.Msg {
 	wordDetails, err := m.services.Storage.SaveWord(m.word)
 	if err != nil {
+		var exists *storage.WordExistsError
+		if errors.As(err, &exists) {
+			return wordExistsMsg{existingID: exists.ExistingID}
+		}
 		slog.Error("unable to save word details", "error", err)
 		// Reload the stored word to discard the rejected edit
 		return tea.Batch(tui.ShowError("Impossible d'enregistrer le mot."), m.loadWordDetails)()
 	}
 
 	return wordLoadedMsg{Word: wordDetails}
+}
+
+func (m Model) mergeInto(intoID int) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.services.Storage.MergeWords(m.wordID, intoID); err != nil {
+			slog.Error("unable to merge words", "error", err)
+			return tea.Batch(tui.ShowError("Impossible de fusionner les mots."), m.loadWordDetails)()
+		}
+		return wordMergedMsg{intoID: intoID}
+	}
 }
 
 func (m Model) changeKind(kind string) tea.Cmd {
@@ -236,6 +251,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tui.PushPage(translationgenerator.NewModel(m.wordID, m.services))
 	case textSubmittedMsg:
 		return m.handleTextSubmittedMsg(msg)
+	case wordExistsMsg:
+		return m, tui.PushModal(confirmmodal.New(confirmmodal.Config{
+			Title: fmt.Sprintf(
+				"« %s » existe déjà.\nFusionner les deux mots ?\nLeurs traductions seront regroupées.",
+				m.word.Text,
+			),
+			ConfirmLabel: "Fusionner",
+			OnConfirm:    func() tea.Msg { return mergeConfirmedMsg{intoID: msg.existingID} },
+			// Reload the stored word to discard the rejected edit
+			OnCancel: m.loadWordDetails,
+		}))
+	case mergeConfirmedMsg:
+		return m, m.mergeInto(msg.intoID)
+	case wordMergedMsg:
+		m.wordID = msg.intoID
+		return m, tea.Batch(m.loadWordDetails, m.loadTranslations)
 	case switchKindPressedMsg:
 		return m.handleSwitchKindPressedMsg()
 	case kindChangeConfirmedMsg:

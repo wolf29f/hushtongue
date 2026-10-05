@@ -39,6 +39,18 @@ type translationsLoadedMsg struct {
 	translations []storage.Translation
 }
 
+type wordExistsMsg struct {
+	existingID int
+}
+
+type mergeConfirmedMsg struct {
+	intoID int
+}
+
+type wordMergedMsg struct {
+	intoID int
+}
+
 type translationDeleteConfirmedMsg struct {
 	id int
 }

@@ -7,6 +7,7 @@ type Storage interface {
 	ListWordDetails(language string) ([]WordDetails, error)
 	GetWord(id int) (WordDetails, error)
 	SaveWord(word WordDetails) (WordDetails, error)
+	MergeWords(fromID, intoID int) error
 	DeleteWord(id int) error
 	ChangeWordKind(id int, kind string) (WordDetails, error)
 	ListTranslations(wordID int) ([]Translation, error)

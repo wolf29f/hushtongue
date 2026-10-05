@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -15,7 +16,8 @@ import (
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
-	_ "modernc.org/sqlite"
+	sqlitedriver "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 type DAO struct {
@@ -128,6 +130,8 @@ func (dao *DAO) AddWord(language, word string) error {
 	return err
 }
 
+// SaveWord updates the word. It returns a *storage.WordExistsError when
+// another word has the same language, normalized form and kind.
 func (dao *DAO) SaveWord(word storage.WordDetails) (storage.WordDetails, error) {
 	word.Normalized = normalize(word.Text)
 
@@ -138,10 +142,71 @@ func (dao *DAO) SaveWord(word storage.WordDetails) (storage.WordDetails, error) 
 	)
 
 	if err := row.Scan(&word.ID, &word.Language, &word.Text, &word.Normalized, &word.Kind); err != nil {
-		return storage.WordDetails{}, err
+		if !isUniqueViolation(err) {
+			return storage.WordDetails{}, err
+		}
+		var existingID int
+		lookupErr := dao.DB.QueryRow(
+			"SELECT id FROM words WHERE lang = ? AND normalized = ? AND kind = ? AND id != ?",
+			word.Language, word.Normalized, word.Kind, word.ID,
+		).Scan(&existingID)
+		if lookupErr != nil {
+			return storage.WordDetails{}, errors.Join(err, lookupErr)
+		}
+		return storage.WordDetails{}, &storage.WordExistsError{ExistingID: existingID}
 	}
 
 	return word, nil
+}
+
+// MergeWords moves the translations of fromID to intoID, a word of the same
+// language, then deletes fromID. A link both words share keeps intoID's.
+func (dao *DAO) MergeWords(fromID, intoID int) error {
+	tx, err := dao.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	language, err := wordLanguage(tx, fromID)
+	if err != nil {
+		return err
+	}
+	intoLanguage, err := wordLanguage(tx, intoID)
+	if err != nil {
+		return err
+	}
+	if language != intoLanguage {
+		return fmt.Errorf("merging words of different languages: %d and %d", fromID, intoID)
+	}
+
+	query := "INSERT INTO translations (source_word_id, con_word_id, source, created_at) " +
+		"SELECT ?, con_word_id, source, created_at FROM translations WHERE source_word_id = ? " +
+		"ON CONFLICT (source_word_id, con_word_id) DO NOTHING"
+	if language == storage.LangCon {
+		query = "INSERT INTO translations (source_word_id, con_word_id, source, created_at) " +
+			"SELECT source_word_id, ?, source, created_at FROM translations WHERE con_word_id = ? " +
+			"ON CONFLICT (source_word_id, con_word_id) DO NOTHING"
+	}
+	if _, err := tx.Exec(query, intoID, fromID); err != nil {
+		return err
+	}
+
+	// The cascade deletes fromID's remaining links
+	if _, err := tx.Exec("DELETE FROM words WHERE id = ?", fromID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func isUniqueViolation(err error) bool {
+	var sqliteErr *sqlitedriver.Error
+	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
 }
 
 // DeleteWord deletes the word and, by cascade, its translations.

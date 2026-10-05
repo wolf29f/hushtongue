@@ -169,6 +169,102 @@ func assertSchemaMigrated(t *testing.T, dao *sqlite.DAO) {
 	}
 }
 
+func TestSaveWord(t *testing.T) {
+	t.Run("renames the word to another case of itself", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+
+		got, err := dao.SaveWord(storage.WordDetails{ID: mer, Language: "source", Text: "Mer", Kind: "root"})
+		if err != nil {
+			t.Fatalf("SaveWord() failed: %v", err)
+		}
+		if got.Text != "Mer" || got.Normalized != "mer" {
+			t.Errorf("SaveWord() = %+v, want text Mer normalized mer", got)
+		}
+	})
+
+	t.Run("reports the existing word on collision", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ciel := insertWord(t, dao, "source", "ciel", "root")
+
+		_, err := dao.SaveWord(storage.WordDetails{ID: ciel, Language: "source", Text: "Mèr", Kind: "root"})
+		var exists *storage.WordExistsError
+		if !errors.As(err, &exists) {
+			t.Fatalf("SaveWord() error = %v, want a WordExistsError", err)
+		}
+		if exists.ExistingID != mer {
+			t.Errorf("ExistingID = %d, want %d", exists.ExistingID, mer)
+		}
+	})
+
+	t.Run("allows the same text with another kind", func(t *testing.T) {
+		dao := newTestDAO(t)
+		insertWord(t, dao, "source", "re", "prefix")
+		ciel := insertWord(t, dao, "source", "ciel", "root")
+
+		if _, err := dao.SaveWord(storage.WordDetails{ID: ciel, Language: "source", Text: "re", Kind: "root"}); err != nil {
+			t.Fatalf("SaveWord() failed: %v", err)
+		}
+	})
+}
+
+func TestMergeWords(t *testing.T) {
+	t.Run("moves the source word's links and deletes it", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ocean := insertWord(t, dao, "source", "ocean", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+		vora := insertWord(t, dao, "con", "vora", "root")
+		if _, err := dao.DB.Exec(
+			`INSERT INTO translations (source_word_id, con_word_id, source) VALUES (?, ?, 'generated')`,
+			mer, ailo,
+		); err != nil {
+			t.Fatalf("inserting translation: %v", err)
+		}
+		insertTranslation(t, dao, ocean, ailo)
+		insertTranslation(t, dao, ocean, vora)
+
+		if err := dao.MergeWords(ocean, mer); err != nil {
+			t.Fatalf("MergeWords() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, mer, "ailo", "vora")
+		assertLinkSource(t, dao, mer, ailo, "generated")
+		if _, err := dao.GetWord(ocean); err == nil {
+			t.Error("merged word still exists")
+		}
+	})
+
+	t.Run("moves the con word's links", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+		aylo := insertWord(t, dao, "con", "aylo", "root")
+		insertTranslation(t, dao, mer, aylo)
+
+		if err := dao.MergeWords(aylo, ailo); err != nil {
+			t.Fatalf("MergeWords() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, ailo, "mer")
+		assertTranslations(t, dao, mer, "ailo")
+	})
+
+	t.Run("rejects words of different languages", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+
+		if err := dao.MergeWords(mer, ailo); err == nil {
+			t.Fatal("MergeWords() succeeded unexpectedly")
+		}
+		if _, err := dao.GetWord(mer); err != nil {
+			t.Errorf("word deleted despite the error: %v", err)
+		}
+	})
+}
+
 func TestDeleteWord(t *testing.T) {
 	t.Run("deletes the word and its translations", func(t *testing.T) {
 		dao := newTestDAO(t)
