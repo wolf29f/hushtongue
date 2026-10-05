@@ -1,6 +1,7 @@
 package sqlite_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -318,6 +319,107 @@ func TestDeleteTranslation(t *testing.T) {
 	})
 }
 
+func TestAddTranslation(t *testing.T) {
+	t.Run("links a source word to a con word, as manual", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+
+		if err := dao.AddTranslation(mer, ailo); err != nil {
+			t.Fatalf("AddTranslation() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, mer, "ailo")
+		assertLinkSource(t, dao, mer, ailo, "manual")
+	})
+
+	t.Run("links from the con side", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+
+		if err := dao.AddTranslation(ailo, mer); err != nil {
+			t.Fatalf("AddTranslation() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, mer, "ailo")
+		assertLinkSource(t, dao, mer, ailo, "manual")
+	})
+
+	t.Run("rejects words of the same language", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ciel := insertWord(t, dao, "source", "ciel", "root")
+
+		err := dao.AddTranslation(mer, ciel)
+		if !errors.Is(err, storage.ErrSameLanguage) {
+			t.Fatalf("AddTranslation() error = %v, want %v", err, storage.ErrSameLanguage)
+		}
+		if got := countTranslations(t, dao, mer); got != 0 {
+			t.Errorf("mer has %d translations, want 0", got)
+		}
+	})
+
+	t.Run("keeps an existing link as is", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+		if _, err := dao.DB.Exec(
+			`INSERT INTO translations (source_word_id, con_word_id, source) VALUES (?, ?, 'generated')`,
+			mer, ailo,
+		); err != nil {
+			t.Fatalf("inserting translation: %v", err)
+		}
+
+		if err := dao.AddTranslation(mer, ailo); err != nil {
+			t.Fatalf("AddTranslation() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, mer, "ailo")
+		assertLinkSource(t, dao, mer, ailo, "generated")
+	})
+}
+
+func TestAddTranslationWord(t *testing.T) {
+	t.Run("creates the con root and links it", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+
+		if err := dao.AddTranslationWord(mer, "ailo"); err != nil {
+			t.Fatalf("AddTranslationWord() failed: %v", err)
+		}
+
+		ailo := findWord(t, dao, "con", "ailo", "root")
+		assertTranslations(t, dao, mer, "ailo")
+		assertLinkSource(t, dao, mer, ailo, "manual")
+	})
+
+	t.Run("creates the source root from a con word", func(t *testing.T) {
+		dao := newTestDAO(t)
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+
+		if err := dao.AddTranslationWord(ailo, "mer"); err != nil {
+			t.Fatalf("AddTranslationWord() failed: %v", err)
+		}
+
+		mer := findWord(t, dao, "source", "mer", "root")
+		assertTranslations(t, dao, ailo, "mer")
+		assertLinkSource(t, dao, mer, ailo, "manual")
+	})
+
+	t.Run("reuses an existing root with the same normalized form", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		insertWord(t, dao, "con", "ailo", "root")
+
+		if err := dao.AddTranslationWord(mer, "Ailo"); err != nil {
+			t.Fatalf("AddTranslationWord() failed: %v", err)
+		}
+
+		assertTranslations(t, dao, mer, "ailo")
+	})
+}
+
 func TestListWordDetails(t *testing.T) {
 	t.Run("lists the words of the language with their details", func(t *testing.T) {
 		dao := newTestDAO(t)
@@ -417,6 +519,21 @@ func assertTranslations(t *testing.T, dao *sqlite.DAO, wordID int, want ...strin
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("translations of word %d = %v, want %v", wordID, got, want)
+	}
+}
+
+func assertLinkSource(t *testing.T, dao *sqlite.DAO, sourceID, conID int, want string) {
+	t.Helper()
+	var got string
+	err := dao.DB.QueryRow(
+		`SELECT source FROM translations WHERE source_word_id = ? AND con_word_id = ?`,
+		sourceID, conID,
+	).Scan(&got)
+	if err != nil {
+		t.Fatalf("reading link source: %v", err)
+	}
+	if got != want {
+		t.Errorf("link source = %q, want %q", got, want)
 	}
 }
 

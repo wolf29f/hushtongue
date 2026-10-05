@@ -248,6 +248,79 @@ func (dao *DAO) DeleteTranslation(id int) error {
 	return err
 }
 
+// AddTranslation links the word to targetID, a word of the other language,
+// as a manual translation. Linking words already linked is a no-op.
+func (dao *DAO) AddTranslation(wordID, targetID int) error {
+	tx, err := dao.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	language, err := wordLanguage(tx, wordID)
+	if err != nil {
+		return err
+	}
+	targetLanguage, err := wordLanguage(tx, targetID)
+	if err != nil {
+		return err
+	}
+	if language == targetLanguage {
+		return storage.ErrSameLanguage
+	}
+
+	sourceID, conID := wordID, targetID
+	if language == storage.LangCon {
+		sourceID, conID = targetID, wordID
+	}
+	if err := linkManual(tx, sourceID, conID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// AddTranslationWord links the word, as a manual translation, to the root
+// spelled text in the other language, creating it when missing.
+func (dao *DAO) AddTranslationWord(wordID int, text string) error {
+	tx, err := dao.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	language, err := wordLanguage(tx, wordID)
+	if err != nil {
+		return err
+	}
+
+	var sourceID, conID int
+	if language == storage.LangSource {
+		sourceID = wordID
+		if conID, err = upsertWord(tx, storage.LangCon, text, storage.KindRoot); err != nil {
+			return err
+		}
+	} else {
+		conID = wordID
+		if sourceID, err = upsertWord(tx, storage.LangSource, text, storage.KindRoot); err != nil {
+			return err
+		}
+	}
+	if err := linkManual(tx, sourceID, conID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 // SaveGeneratedTranslation links each part to its con translation, creating
 // the missing words and links. With several parts, it also links wordID to
 // the concatenation of the con parts, stored as a con root.
@@ -304,6 +377,22 @@ func upsertWord(tx *sql.Tx, language, text, kind string) (int, error) {
 		language, text, normalize(text), kind,
 	).Scan(&id)
 	return id, err
+}
+
+func wordLanguage(tx *sql.Tx, id int) (string, error) {
+	var language string
+	err := tx.QueryRow("SELECT lang FROM words WHERE id = ?", id).Scan(&language)
+	return language, err
+}
+
+// linkManual links the two words, unless they already are.
+func linkManual(tx *sql.Tx, sourceID, conID int) error {
+	_, err := tx.Exec(
+		"INSERT INTO translations (source_word_id, con_word_id, source) VALUES (?, ?, 'manual') "+
+			"ON CONFLICT (source_word_id, con_word_id) DO NOTHING",
+		sourceID, conID,
+	)
+	return err
 }
 
 // linkGenerated links the two words, unless they already are.

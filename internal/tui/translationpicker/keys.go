@@ -7,6 +7,8 @@ import (
 type keyMap struct {
 	FocusNext key.Binding
 	FocusPrev key.Binding
+	Pick      key.Binding
+	NewWord   key.Binding
 	Generate  key.Binding
 	Quit      key.Binding
 }
@@ -19,6 +21,14 @@ var keys = keyMap{
 	FocusPrev: key.NewBinding(
 		key.WithKeys("shift+tab"),
 		key.WithHelp("shift+tab", "focus précédent"),
+	),
+	Pick: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("⏎", "choisir la traduction"),
+	),
+	NewWord: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "nouveau mot"),
 	),
 	Generate: key.NewBinding(
 		key.WithKeys("g"),

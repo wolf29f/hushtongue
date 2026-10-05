@@ -1,7 +1,9 @@
 package translationpicker
 
 import (
+	"fmt"
 	"log/slog"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -11,15 +13,20 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
+	"github.com/wolf29f/hushtongue/internal/tui/components/inputmodal"
 	"github.com/wolf29f/hushtongue/internal/tui/components/wordlist"
 	"github.com/wolf29f/hushtongue/internal/tui/translationgenerator"
 )
+
+// buttonGap is the space between the buttons below the word list.
+const buttonGap = 1
 
 type focus int
 
 const (
 	focusWordList focus = iota
-	focusGenerate       // only for MJ, on a source word
+	focusNewWord
+	focusGenerate // only for MJ, on a source word
 	focusOverflowed
 )
 
@@ -35,6 +42,7 @@ type Model struct {
 
 	// Components
 	wordList       wordlist.Model
+	newWordButton  button.Model
 	generateButton button.Model
 
 	// UI stuff
@@ -49,6 +57,9 @@ func NewModel(wordID int, services *services.Services) Model {
 		focus:    focusWordList,
 
 		wordList: wordlist.NewModel(nil),
+		newWordButton: button.New("Nouveau mot",
+			func() tea.Msg { return newWordPressedMsg{} },
+		),
 		generateButton: button.New("Générer",
 			func() tea.Msg { return generatePressedMsg{} },
 		),
@@ -70,7 +81,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) setKeyMap() tea.Cmd {
 	generate := keys.Generate
 	generate.SetEnabled(m.canGenerate())
-	return tui.SetKeyMap(m.wordList.KeyMapHelper(generate))
+	return tui.SetKeyMap(m.wordList.KeyMapHelper(keys.Pick, keys.NewWord, generate))
 }
 
 func (m Model) loadWord() tea.Msg {
@@ -84,17 +95,32 @@ func (m Model) loadWord() tea.Msg {
 
 // loadWords loads the words of the language opposite to the word's.
 func (m Model) loadWords() tea.Msg {
-	language := storage.LangCon
-	if m.word.Language == storage.LangCon {
-		language = storage.LangSource
-	}
-
-	words, err := m.services.Storage.ListWords(language)
+	words, err := m.services.Storage.ListWords(m.targetLanguage())
 	if err != nil {
 		slog.Error("unable to get words", "error", err)
 		return tui.ShowError("Impossible de charger les mots.")()
 	}
 	return wordsLoadedMsg{words: words}
+}
+
+func (m Model) addTranslation(targetID int) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.services.Storage.AddTranslation(m.wordID, targetID); err != nil {
+			slog.Error("unable to add translation", "error", err)
+			return tui.ShowError("Impossible d'ajouter la traduction.")()
+		}
+		return tui.PopPage()
+	}
+}
+
+func (m Model) addTranslationWord(text string) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.services.Storage.AddTranslationWord(m.wordID, text); err != nil {
+			slog.Error("unable to add translation word", "error", err)
+			return tui.ShowError(fmt.Sprintf("Impossible d'ajouter la traduction « %s ».", text))()
+		}
+		return tui.PopPage()
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -107,6 +133,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.wordList, cmd = m.wordList.SetItems(msg.words)
 		return m, cmd
+	case wordlist.WordSelectedMsg:
+		return m, m.addTranslation(msg.ID)
+	case newWordPressedMsg:
+		return m, tui.PushModal(inputmodal.New(inputmodal.Config{
+			Title:       fmt.Sprintf("Nouveau mot en %s", targetLangLabel(m.targetLanguage())),
+			Placeholder: "Saisissez un mot",
+			SubmitHelp:  "ajouter la traduction",
+			OnSubmit:    newWordSubmitted,
+		}))
+	case newWordSubmittedMsg:
+		text := strings.TrimSpace(msg.text)
+		if text == "" {
+			return m, nil
+		}
+		return m, m.addTranslationWord(text)
 	case generatePressedMsg:
 		// Replaced rather than pushed: leaving the generator goes back to
 		// the word, not to this picker
@@ -127,17 +168,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.moveFocus(-1), nil
 		case key.Matches(msg, keys.Quit):
 			return m, tui.PopPage
+		case key.Matches(msg, keys.NewWord):
+			return m, m.newWordButton.OnPress
 		case m.canGenerate() && key.Matches(msg, keys.Generate):
 			return m, m.generateButton.OnPress
 		}
 	}
 
 	// Components ignore keys when they don't have focus
-	var wordListCmd, generateCmd tea.Cmd
+	var wordListCmd, newWordCmd, generateCmd tea.Cmd
 	m.wordList, wordListCmd = m.wordList.Update(msg)
+	m.newWordButton, newWordCmd = m.newWordButton.Update(msg)
 	m.generateButton, generateCmd = m.generateButton.Update(msg)
 
-	return m, tea.Batch(wordListCmd, generateCmd)
+	return m, tea.Batch(wordListCmd, newWordCmd, generateCmd)
 }
 
 // canGenerate reports whether a translation can be generated for the word.
@@ -145,9 +189,25 @@ func (m Model) canGenerate() bool {
 	return config.IsForGM && m.word.Language == storage.LangSource
 }
 
+// targetLanguage returns the language opposite to the word's.
+func (m Model) targetLanguage() string {
+	if m.word.Language == storage.LangCon {
+		return storage.LangSource
+	}
+	return storage.LangCon
+}
+
+func targetLangLabel(language string) string {
+	if language == storage.LangSource {
+		return config.SourceLangLabel
+	}
+	return config.ConLangLabel
+}
+
 // applyFocus propagates m.focus to the components.
 func (m Model) applyFocus() Model {
 	m.wordList.Focused = m.focus == focusWordList
+	m.newWordButton.Focused = m.focus == focusNewWord
 	m.generateButton.Focused = m.focus == focusGenerate
 	return m
 }
@@ -161,13 +221,13 @@ func (m Model) moveFocus(step focus) Model {
 }
 
 func (m Model) computeLayout() Model {
-	m.generateButton.Width = lipgloss.Width(m.generateButton.Content) + m.generateButton.Style.GetHorizontalFrameSize()
-	m.generateButton.Height = m.generateButton.Style.GetVerticalFrameSize() + 1
-
-	listHeight := m.height - lipgloss.Height(m.header())
-	if m.canGenerate() {
-		listHeight -= m.generateButton.Height
+	// Buttons are sized to fit their content
+	for _, b := range []*button.Model{&m.newWordButton, &m.generateButton} {
+		b.Width = lipgloss.Width(b.Content) + b.Style.GetHorizontalFrameSize()
+		b.Height = b.Style.GetVerticalFrameSize() + 1
 	}
+
+	listHeight := m.height - lipgloss.Height(m.header()) - m.newWordButton.Height
 	m.wordList = m.wordList.SetSize(m.width, listHeight)
 
 	return m
@@ -178,14 +238,18 @@ func (m Model) header() string {
 }
 
 func (m Model) View() tea.View {
-	rows := []string{m.header(), m.wordList.View().Content}
+	buttons := []string{m.newWordButton.View()}
 	if m.canGenerate() {
-		rows = append(rows, m.generateButton.View())
+		buttons = append(buttons, strings.Repeat(" ", buttonGap), m.generateButton.View())
 	}
 
 	return tea.NewView(lipgloss.Place(
 		m.width, m.height,
 		lipgloss.Left, lipgloss.Top,
-		lipgloss.JoinVertical(lipgloss.Left, rows...),
+		lipgloss.JoinVertical(lipgloss.Left,
+			m.header(),
+			m.wordList.View().Content,
+			lipgloss.JoinHorizontal(lipgloss.Center, buttons...),
+		),
 	))
 }

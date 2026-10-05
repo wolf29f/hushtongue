@@ -11,5 +11,7 @@ type Storage interface {
 	ChangeWordKind(id int, kind string) (WordDetails, error)
 	ListTranslations(wordID int) ([]Translation, error)
 	DeleteTranslation(id int) error
+	AddTranslation(wordID, targetID int) error
+	AddTranslationWord(wordID int, text string) error
 	SaveGeneratedTranslation(wordID int, parts []TranslationPart) error
 }
