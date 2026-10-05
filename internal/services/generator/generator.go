@@ -108,7 +108,7 @@ func buildFromSeed(seed uint32, kind Kind) string {
 // collide with an unrelated affix.
 func Generate(sourceKey string, kind Kind, exists func(word string) bool) string {
 	var word string
-	for attempt := 0; attempt < 50; attempt++ {
+	for attempt := range 50 {
 		seedInput := sourceKey
 		if attempt > 0 {
 			seedInput = sourceKey + "_" + strconv.Itoa(attempt)

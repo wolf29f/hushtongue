@@ -161,8 +161,7 @@ func (m Model) deleteTranslation(id int) tea.Cmd {
 func (m Model) saveWordDetails() tea.Msg {
 	wordDetails, err := m.services.Storage.SaveWord(m.word)
 	if err != nil {
-		var exists *storage.WordExistsError
-		if errors.As(err, &exists) {
+		if exists, ok := errors.AsType[*storage.WordExistsError](err); ok {
 			return wordExistsMsg{existingID: exists.ExistingID}
 		}
 		slog.Error("unable to save word details", "error", err)
