@@ -2,12 +2,17 @@ package tui
 
 import (
 	"log/slog"
+	"strings"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/wolf29f/hushtongue/internal/config"
 )
+
+// versionGap is the minimum space between the help and the version.
+const versionGap = 1
 
 type RootModel struct {
 	stack []tea.Model
@@ -55,7 +60,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		// Need to be propagated to the entire stack
 		m.width, m.height = msg.Width, msg.Height
-		m.footer = m.helpView()
+		m.footer = m.footerView()
 
 		// Subtract the footer height from the available window height.
 		_, footerHeight := lipgloss.Size(m.footer)
@@ -80,7 +85,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.keyMap != nil && key.Matches(msg, m.keyMap.Help()) {
 			m.help.ShowAll = !m.help.ShowAll
-			m.footer = m.helpView()
+			m.footer = m.footerView()
 			return m, func() tea.Msg {
 				return tea.WindowSizeMsg{Width: m.width, Height: m.height}
 			}
@@ -138,7 +143,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.errors) == 0 {
 			m.hiddenKeyMap = m.keyMap
 			m.keyMap = errorKeys
-			m.footer = m.helpView()
+			m.footer = m.footerView()
 		}
 		m.errors = append(m.errors, msg.message)
 		return m, m.sizeCmd()
@@ -165,7 +170,7 @@ func (m RootModel) setKeyMap(keyMap KeyMapHelper) RootModel {
 		return m
 	}
 	m.keyMap = keyMap
-	m.footer = m.helpView()
+	m.footer = m.footerView()
 	return m
 }
 
@@ -183,23 +188,37 @@ func (m RootModel) dismissError() RootModel {
 	if len(m.errors) == 0 {
 		m.keyMap = m.hiddenKeyMap
 		m.hiddenKeyMap = nil
-		m.footer = m.helpView()
+		m.footer = m.footerView()
 	}
 	return m
 }
 
-func (m RootModel) helpView() string {
-	if m.keyMap == nil {
-		return ""
+// footerView renders the help centered, and the version in the bottom right
+// corner. The help is centered in the width left between two version-wide
+// margins, so that it never overlaps the version.
+func (m RootModel) footerView() string {
+	version := m.help.Styles.ShortDesc.Render(config.Version)
+	versionWidth := lipgloss.Width(version) + versionGap
+
+	helpView := ""
+	if m.keyMap != nil {
+		helpView = m.help.View(m.keyMap)
 	}
-	helpView := m.help.View(m.keyMap)
-	_, helpHeight := lipgloss.Size(helpView)
-	footer := lipgloss.Place(
-		m.width, helpHeight,
-		lipgloss.Center, lipgloss.Bottom,
-		helpView,
+	height := max(1, lipgloss.Height(helpView))
+
+	return lipgloss.JoinHorizontal(lipgloss.Bottom,
+		strings.Repeat(" ", versionWidth),
+		lipgloss.Place(
+			max(0, m.width-2*versionWidth), height,
+			lipgloss.Center, lipgloss.Bottom,
+			helpView,
+		),
+		lipgloss.Place(
+			versionWidth, height,
+			lipgloss.Right, lipgloss.Bottom,
+			version,
+		),
 	)
-	return footer
 }
 
 func (m RootModel) View() tea.View {

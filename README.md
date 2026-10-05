@@ -42,16 +42,30 @@ go build -o dist/langgen -tags gm ./cmd
 go build -o dist/langlearn ./cmd
 ```
 
-Build both apps for all common targets
+Without a version, the apps show `dev` in the bottom right corner. To set one:
 
 ```sh
-for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
-  os=${t%/*}; arch=${t#*/}
-  ext=""; [ "$os" = "windows" ] && ext=".exe"
-  for app in langgen langlearn; do
-    tags=""; [ "$app" = "langgen" ] && tags="gm"
-    GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -tags "$tags" \
-      -o "dist/$app-$os-$arch$ext" ./cmd
-  done
-done
+go build -o dist/langgen -tags gm \
+  -ldflags "-X github.com/wolf29f/hushtongue/internal/config.Version=v0.1.0" ./cmd
 ```
+
+Build both apps for all common targets into `dist/` with [GoReleaser](https://goreleaser.com), configured in [`.goreleaser.yaml`](.goreleaser.yaml):
+
+```sh
+goreleaser build --snapshot --clean
+# or, without installing it
+go run github.com/goreleaser/goreleaser/v2@latest build --snapshot --clean
+```
+
+## Releasing
+
+Pushing a `v*` tag runs the [release workflow](.github/workflows/release.yml), which uses GoReleaser to build the 12 binaries and attach them, with a checksums file and a changelog, to a GitHub release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+A tag with a suffix, like `v0.2.0-rc1`, is published as a prerelease: it is never marked as the latest release. The changelog of a stable release starts from the previous stable release, so it includes the changes of its prereleases.
+
+The binaries aren't signed: macOS blocks them until opened with right click → Open (or `xattr -d com.apple.quarantine <file>`), and Windows SmartScreen shows a warning.
