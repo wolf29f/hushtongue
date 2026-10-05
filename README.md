@@ -32,13 +32,26 @@ go run ./cmd
 
 ## Building
 
-Build for all common targets
+The `gm` build tag selects the target:
+
+- with `-tags gm`: **`langgen`**, the GM app
+- without it: **`langlearn`**, the player app
+
+```sh
+go build -o dist/langgen -tags gm ./cmd
+go build -o dist/langlearn ./cmd
+```
+
+Build both apps for all common targets
 
 ```sh
 for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
   os=${t%/*}; arch=${t#*/}
   ext=""; [ "$os" = "windows" ] && ext=".exe"
-  GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
-    -o "dist/app-$os-$arch$ext" ./cmd/main.go
+  for app in langgen langlearn; do
+    tags=""; [ "$app" = "langgen" ] && tags="gm"
+    GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -tags "$tags" \
+      -o "dist/$app-$os-$arch$ext" ./cmd
+  done
 done
 ```
