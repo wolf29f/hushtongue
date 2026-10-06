@@ -17,17 +17,77 @@ Both apps share the same translation UI: type in either language, get live color
 
 ## Status
 
-Early skeleton — data model and TUI scaffolding are in place; the translate and dictionary screens are under active development. See [`specifications.md`](specifications.md) and [`pages.md`](pages.md) for the full design.
+Work in progress. See [`specifications.md`](specifications.md) and [`pages.md`](pages.md) for the full design.
+
+- **Dictionary screen** — done: browse and filter the words of both languages, add, rename and delete words, link translations by hand (picking an existing word or typing a new one), and navigate from a word to its translations. Renaming a word into an existing one offers to merge them. In `langgen` only: set a word's kind (root/prefix/suffix) and generate translations.
+- **Translate screen** — not started yet.
 
 ## Tech
 
 - Go, [Bubble Tea](https://charm.land) for the TUI
 - SQLite (`modernc.org/sqlite`, pure Go, no cgo) — one database file per user (GM or player)
 
-## Running
+## Installing and running
+
+Download the app from the [latest release](https://github.com/wolf29f/hushtongue/releases/latest): **`langlearn`** for players, **`langgen`** for the GM. Pick the file matching your system:
+
+| System | File |
+| --- | --- |
+| Linux, x86 PC | `<app>-linux-amd64.tar.gz` |
+| Linux, ARM (Raspberry Pi…) | `<app>-linux-arm64.tar.gz` |
+| macOS, Apple Silicon (M1 and later) | `<app>-darwin-arm64.tar.gz` |
+| macOS, Intel | `<app>-darwin-amd64.tar.gz` |
+| Windows, most PCs | `<app>-windows-amd64.exe` |
+| Windows, ARM (Snapdragon…) | `<app>-windows-arm64.exe` |
+
+The apps run in a terminal: a modern one with Unicode and colors gives the best rendering.
+
+### Linux
 
 ```sh
-go run ./cmd
+tar -xzf langlearn-linux-amd64.tar.gz
+./langlearn
+```
+
+To launch it from anywhere, move it to a directory of your `PATH`, e.g. `mv langlearn ~/.local/bin/`.
+
+### macOS
+
+```sh
+tar -xzf langlearn-darwin-arm64.tar.gz
+xattr -d com.apple.quarantine langlearn
+./langlearn
+```
+
+The binaries aren't signed, so macOS blocks them when downloaded from a browser: the `xattr` command lifts that block (it reports `No such xattr` when there is none, which is fine). Alternatively, try to launch it once, then allow it in System Settings → Privacy & Security → "Open Anyway".
+
+### Windows
+
+Run the `.exe` from Windows Terminal or PowerShell:
+
+```powershell
+.\langlearn-windows-amd64.exe
+```
+
+Double-clicking it also works and opens it in a console window. The binaries aren't signed, so Windows SmartScreen may warn on first launch: click "More info", then "Run anyway".
+
+### Data
+
+Each app stores its dictionary in a single SQLite file, and its logs next to it:
+
+| System | Dictionary | Logs |
+| --- | --- | --- |
+| Linux | `~/.local/share/hushtongue/hushtongue.db` | `~/.local/state/hushtongue/app.log` |
+| macOS | `~/Library/Application Support/hushtongue/hushtongue.db` | `~/Library/Application Support/hushtongue/app.log` |
+| Windows | `%LOCALAPPDATA%\hushtongue\hushtongue.db` | `%LOCALAPPDATA%\hushtongue\app.log` |
+
+Back up or move a dictionary by copying that file. `langgen` and `langlearn` use the same path: on the same computer, they share the same dictionary.
+
+## Running from source
+
+```sh
+go run -tags gm ./cmd   # langgen, the GM app
+go run ./cmd            # langlearn, the player app
 ```
 
 ## Building
@@ -65,7 +125,7 @@ goreleaser release --snapshot --clean
 
 ## Releasing
 
-Pushing a `v*` tag runs the [release workflow](.github/workflows/release.yml), which uses GoReleaser to build the 12 binaries and attach them, with a checksums file and a changelog, to a GitHub release:
+Pushing a `v*` tag runs the [release workflow](.github/workflows/release.yml), which uses GoReleaser to build both apps for the 6 targets and attach them, with a checksums file and a changelog, to a GitHub release:
 
 ```sh
 git tag v0.1.0
@@ -73,5 +133,3 @@ git push origin v0.1.0
 ```
 
 A tag with a suffix, like `v0.2.0-rc1`, is published as a prerelease: it is never marked as the latest release. The changelog of a stable release starts from the previous stable release, so it includes the changes of its prereleases.
-
-The binaries aren't signed: macOS blocks them until opened with right click → Open (or `xattr -d com.apple.quarantine <file>`), and Windows SmartScreen shows a warning.
