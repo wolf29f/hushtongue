@@ -57,6 +57,12 @@ goreleaser build --snapshot --clean
 go run github.com/goreleaser/goreleaser/v2@latest build --snapshot --clean
 ```
 
+To also produce the release files (`.tar.gz` archives, Windows `.exe` and checksums) without publishing anything:
+
+```sh
+goreleaser release --snapshot --clean
+```
+
 ## Releasing
 
 Pushing a `v*` tag runs the [release workflow](.github/workflows/release.yml), which uses GoReleaser to build the 12 binaries and attach them, with a checksums file and a changelog, to a GitHub release:

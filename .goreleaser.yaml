@@ -23,9 +23,22 @@ builds:
     goarch: [amd64, arm64]
 
 archives:
-  # Raw binaries rather than .tar.gz/.zip archives
-  - formats: [binary]
+  # One archive per app, rather than both apps in the same archive
+  - id: langgen
+    ids: [langgen]
+    formats: [tar.gz]
     name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [binary]
+
+  - id: langlearn
+    ids: [langlearn]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [binary]
 
 changelog:
   use: github
