@@ -9,13 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode"
 
 	"github.com/adrg/xdg"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
-	"golang.org/x/text/runes"
-	"golang.org/x/text/transform"
-	"golang.org/x/text/unicode/norm"
 	sqlitedriver "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -125,7 +121,7 @@ func (dao *DAO) ListWordDetails(language string) ([]storage.WordDetails, error) 
 }
 
 func (dao *DAO) AddWord(language, word string) error {
-	normalized := normalize(word)
+	normalized := storage.Normalize(word)
 	_, err := dao.DB.Exec("INSERT INTO words (lang, text, normalized) VALUES (?, ?, ?)", language, word, normalized)
 	return err
 }
@@ -133,7 +129,7 @@ func (dao *DAO) AddWord(language, word string) error {
 // SaveWord updates the word. It returns a *storage.WordExistsError when
 // another word has the same language, normalized form and kind.
 func (dao *DAO) SaveWord(word storage.WordDetails) (storage.WordDetails, error) {
-	word.Normalized = normalize(word.Text)
+	word.Normalized = storage.Normalize(word.Text)
 
 	row := dao.DB.QueryRow(
 		"UPDATE words SET lang = ?, text = ?, normalized = ?, kind = ? WHERE id = ? "+
@@ -248,16 +244,6 @@ func (dao *DAO) ChangeWordKind(id int, kind string) (storage.WordDetails, error)
 	return word, nil
 }
 
-// normalize lowercases word and strips its diacritics ("Éléphant" -> "elephant").
-func normalize(word string) string {
-	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-	stripped, _, err := transform.String(t, word)
-	if err != nil {
-		stripped = word
-	}
-	return strings.ToLower(stripped)
-}
-
 func (dao *DAO) GetWord(id int) (storage.WordDetails, error) {
 	var word storage.WordDetails
 	err := dao.DB.QueryRow("SELECT id, lang, text, normalized, kind FROM words WHERE id = ?", id).Scan(&word.ID, &word.Language, &word.Text, &word.Normalized, &word.Kind)
@@ -300,6 +286,41 @@ func (dao *DAO) ListTranslations(wordID int) ([]storage.Translation, error) {
 			return nil, err
 		}
 		translations = append(translations, translation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return translations, nil
+}
+
+// ListTranslationsByLanguage lists the translation links of every word of
+// language, keyed by word id, in insertion order.
+func (dao *DAO) ListTranslationsByLanguage(language string) (map[int][]storage.Translation, error) {
+	query := "SELECT t.source_word_id, t.id, w.id, w.text FROM translations t " +
+		"JOIN words w ON w.id = t.con_word_id ORDER BY t.id"
+	if language == storage.LangCon {
+		query = "SELECT t.con_word_id, t.id, w.id, w.text FROM translations t " +
+			"JOIN words w ON w.id = t.source_word_id ORDER BY t.id"
+	}
+
+	rows, err := dao.DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("Failed to close rows", "error", err)
+		}
+	}()
+
+	translations := make(map[int][]storage.Translation)
+	for rows.Next() {
+		var wordID int
+		var translation storage.Translation
+		if err := rows.Scan(&wordID, &translation.ID, &translation.Word.ID, &translation.Word.Text); err != nil {
+			return nil, err
+		}
+		translations[wordID] = append(translations[wordID], translation)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -439,7 +460,7 @@ func upsertWord(tx *sql.Tx, language, text, kind string) (int, error) {
 	err := tx.QueryRow(
 		"INSERT INTO words (lang, text, normalized, kind) VALUES (?, ?, ?, ?) "+
 			"ON CONFLICT (lang, normalized, kind) DO UPDATE SET text = text RETURNING id",
-		language, text, normalize(text), kind,
+		language, text, storage.Normalize(text), kind,
 	).Scan(&id)
 	return id, err
 }
