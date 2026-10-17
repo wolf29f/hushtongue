@@ -139,8 +139,14 @@ func (l *Lexicon) Complete(prefix string, limit int) (words []storage.Word, more
 	return words, more
 }
 
+// Clean strips the leading and trailing punctuation of word ("maison," ->
+// "maison").
+func Clean(word string) string {
+	return strings.TrimFunc(word, unicode.IsPunct)
+}
+
 func key(word string) string {
-	return storage.Normalize(strings.TrimFunc(word, unicode.IsPunct))
+	return storage.Normalize(Clean(word))
 }
 
 // trigrams lists the distinct trigrams of word, padded at the start only so
