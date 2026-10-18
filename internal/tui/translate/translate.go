@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"unicode"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -17,15 +16,12 @@ import (
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/components/button"
 	"github.com/wolf29f/hushtongue/internal/tui/components/confirmmodal"
-	"github.com/wolf29f/hushtongue/internal/tui/styles"
+	"github.com/wolf29f/hushtongue/internal/tui/translate/components/wordchoice"
+	"github.com/wolf29f/hushtongue/internal/tui/translate/components/wordinput"
 	"github.com/wolf29f/hushtongue/internal/tui/translationpicker"
 )
 
-const (
-	maxSuggestions = 5
-	buttonGap      = 1
-	columnGap      = 2
-)
+const buttonGap = 1
 
 type focus int
 
@@ -48,18 +44,9 @@ type Model struct {
 	focus   focus
 	status  string // feedback shown until the next key
 
-	// Input: the committed words, and the word being typed
-	words       []string
-	typed       string
-	suggestions []storage.Word
-	more        bool // whether suggestions were left out
-	suggestion  int  // selected suggestion, -1 when the typed word is shown
-
-	// Translation choice: the selected item of each word's column
-	choices []int
-	slot    int
-
 	// Components
+	input           wordinput.Model
+	choice          wordchoice.Model
 	directionButton button.Model
 	memorizeButton  button.Model
 
@@ -76,12 +63,13 @@ func NewModel(services *services.Services) Model {
 	}
 
 	m := Model{
-		services:   services,
-		from:       from,
-		lexicon:    &lexicon.Lexicon{},
-		focus:      focusInput,
-		suggestion: -1,
+		services: services,
+		from:     from,
+		lexicon:  &lexicon.Lexicon{},
+		focus:    focusInput,
 
+		input:  wordinput.New(),
+		choice: wordchoice.New(),
 		directionButton: button.New(directionLabel(from),
 			func() tea.Msg { return switchDirectionPressedMsg{} },
 		),
@@ -141,6 +129,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.switchDirection()
 	case memorizePressedMsg:
 		return m, m.memorize()
+	case wordchoice.AddPressedMsg:
+		return m, m.addTranslation(msg.Word)
+	case wordchoice.DeletePressedMsg:
+		return m, tui.PushModal(confirmmodal.New(confirmmodal.Config{
+			Title:        fmt.Sprintf("Supprimer le lien avec « %s » ?", msg.Translation.Word.Text),
+			ConfirmLabel: "Supprimer le lien",
+			OnConfirm:    func() tea.Msg { return translationDeleteConfirmedMsg{id: msg.Translation.ID} },
+		}))
 	case translationDeleteConfirmedMsg:
 		return m, m.deleteTranslation(msg.id)
 	case tea.KeyPressMsg:
@@ -152,158 +148,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.moveFocus(-1)
 		case key.Matches(msg, keys.Copy):
 			m = m.commit()
-			if len(m.words) == 0 {
+			if len(m.input.Words()) == 0 {
 				return m, nil
 			}
 			return m, m.copy()
 		case key.Matches(msg, keys.Paste):
 			return m, readClipboard
-		}
-		switch m.focus {
-		case focusInput:
-			return m.updateInput(msg)
-		case focusChoice:
-			return m.updateChoice(msg)
-		}
-		if key.Matches(msg, keys.Quit) {
+		case m.focus == focusInput && key.Matches(msg, keys.QuitInput),
+			m.focus != focusInput && key.Matches(msg, keys.Quit):
 			return m, m.quit()
 		}
 	}
 
 	// Components ignore keys when they don't have focus
-	var directionCmd, memorizeCmd tea.Cmd
+	var choiceCmd, directionCmd, memorizeCmd tea.Cmd
+	m.input = m.input.Update(msg)
+	m.choice = m.choice.SetWords(m.input.Words())
+	m.choice, choiceCmd = m.choice.Update(msg)
 	m.directionButton, directionCmd = m.directionButton.Update(msg)
 	m.memorizeButton, memorizeCmd = m.memorizeButton.Update(msg)
 
-	return m, tea.Batch(directionCmd, memorizeCmd)
-}
-
-func (m Model) updateInput(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, keys.QuitInput):
-		return m, m.quit()
-	case key.Matches(msg, keys.Commit):
-		return m.commit(), nil
-	case key.Matches(msg, keys.PrevSuggestion):
-		if m.suggestion >= 0 {
-			m.suggestion--
-		}
-		return m, nil
-	case key.Matches(msg, keys.NextSuggestion):
-		if m.suggestion < len(m.suggestions)-1 {
-			m.suggestion++
-		}
-		return m, nil
-	case key.Matches(msg, keys.Erase):
-		return m.erase(), nil
-	case msg.Text != "" && msg.Mod&(tea.ModCtrl|tea.ModAlt|tea.ModMeta|tea.ModSuper|tea.ModHyper) == 0:
-		return m.setTyped(m.current() + msg.Text), nil
-	}
-	return m, nil
-}
-
-func (m Model) updateChoice(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	if len(m.words) == 0 {
-		if key.Matches(msg, keys.Quit) {
-			return m, m.quit()
-		}
-		return m, nil
-	}
-
-	entry := m.lexicon.Lookup(m.words[m.slot])
-	choice := m.choices[m.slot]
-	switch {
-	case key.Matches(msg, keys.Quit):
-		return m, m.quit()
-	case key.Matches(msg, keys.PrevWord):
-		m.slot = max(0, m.slot-1)
-	case key.Matches(msg, keys.NextWord):
-		m.slot = min(len(m.words)-1, m.slot+1)
-	case key.Matches(msg, keys.PrevCandidate):
-		m.choices[m.slot] = max(0, choice-1)
-	case key.Matches(msg, keys.NextCandidate):
-		m.choices[m.slot] = min(addIndex(entry), choice+1)
-	case key.Matches(msg, keys.Add),
-		key.Matches(msg, keys.Press) && choice == addIndex(entry):
-		return m, m.addTranslation()
-	case key.Matches(msg, keys.Delete) && choice < len(entry.Translations):
-		link := entry.Translations[choice]
-		return m, tui.PushModal(confirmmodal.New(confirmmodal.Config{
-			Title:        fmt.Sprintf("Supprimer le lien avec « %s » ?", link.Word.Text),
-			ConfirmLabel: "Supprimer le lien",
-			OnConfirm:    func() tea.Msg { return translationDeleteConfirmedMsg{id: link.ID} },
-		}))
-	}
-	return m, nil
-}
-
-// addIndex returns the index of the "+" item of a word's column, below its
-// translations or its "?".
-func addIndex(entry lexicon.Entry) int {
-	return max(1, len(entry.Translations))
-}
-
-// current returns the selected suggestion, or the typed word.
-func (m Model) current() string {
-	if m.suggestion >= 0 {
-		return m.suggestions[m.suggestion].Text
-	}
-	return m.typed
-}
-
-func (m Model) setTyped(typed string) Model {
-	m.typed = typed
-	m.suggestion = -1
-	m.suggestions, m.more = m.lexicon.Complete(typed, maxSuggestions)
-	return m
-}
-
-func (m Model) appendWord(word string) Model {
-	m.words = append(m.words, word)
-	m.choices = append(m.choices, 0)
-	return m
+	return m, tea.Batch(choiceCmd, directionCmd, memorizeCmd)
 }
 
 func (m Model) commit() Model {
-	word := m.current()
-	if word == "" {
-		return m
-	}
-	return m.appendWord(word).setTyped("")
+	m.input = m.input.Commit()
+	m.choice = m.choice.SetWords(m.input.Words())
+	return m
 }
 
-// erase reopens the previous word when the input is empty.
-func (m Model) erase() Model {
-	if word := []rune(m.current()); len(word) > 0 {
-		return m.setTyped(string(word[:len(word)-1]))
-	}
-	if len(m.words) == 0 {
-		return m
-	}
-	last := m.words[len(m.words)-1]
-	m.words = m.words[:len(m.words)-1]
-	m.choices = m.choices[:len(m.choices)-1]
-	m.slot = max(0, min(m.slot, len(m.words)-1))
-	return m.setTyped(last)
-}
-
-// paste appends text to the input, its last word staying in edition unless
-// text ends with a space.
 func (m Model) paste(text string) Model {
-	text = m.current() + text
-	words := strings.Fields(text)
-	committed := len(words)
-	if r := []rune(text); committed > 0 && !unicode.IsSpace(r[len(r)-1]) {
-		committed--
-	}
-
-	m = m.setTyped("")
-	for _, word := range words[:committed] {
-		m = m.appendWord(word)
-	}
-	if committed < len(words) {
-		m = m.setTyped(words[committed])
-	}
+	m.input = m.input.Paste(text)
+	m.choice = m.choice.SetWords(m.input.Words())
 	return m
 }
 
@@ -313,22 +189,11 @@ func (m Model) handleLexiconLoadedMsg(msg lexiconLoadedMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	previous := m.lexicon
 	m.lexicon = msg.lexicon
-	for i, word := range m.words {
-		before := previous.Lookup(word)
-		after := m.lexicon.Lookup(word)
-		// A translation was added from the "+": select it
-		if m.choices[i] == addIndex(before) && len(after.Translations) > len(before.Translations) {
-			m.choices[i] = len(after.Translations) - 1
-		}
-		m.choices[i] = min(m.choices[i], addIndex(after))
-	}
+	m.input = m.input.SetLexicon(m.lexicon)
+	m.choice = m.choice.SetLexicon(m.lexicon)
 
-	m.suggestions, m.more = m.lexicon.Complete(m.typed, maxSuggestions)
-	m.suggestion = min(m.suggestion, len(m.suggestions)-1)
-
-	if m.focus == focusMemorize && len(m.newWords()) == 0 {
+	if m.focus == focusMemorize && len(m.listUnknownWords()) == 0 {
 		m.focus = focusDirection
 		m = m.applyFocus()
 		return m, m.setKeyMap()
@@ -336,12 +201,8 @@ func (m Model) handleLexiconLoadedMsg(msg lexiconLoadedMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) isEmpty() bool {
-	return len(m.words) == 0 && m.current() == ""
-}
-
 func (m Model) quit() tea.Cmd {
-	if m.isEmpty() {
+	if m.input.IsEmpty() {
 		return tui.PopPage
 	}
 	return tui.PushModal(confirmmodal.New(confirmmodal.Config{
@@ -352,7 +213,7 @@ func (m Model) quit() tea.Cmd {
 }
 
 func (m Model) handleSwitchDirectionPressedMsg() (Model, tea.Cmd) {
-	if m.isEmpty() {
+	if m.input.IsEmpty() {
 		return m.switchDirection()
 	}
 	return m, tui.PushModal(confirmmodal.New(confirmmodal.Config{
@@ -370,16 +231,16 @@ func (m Model) switchDirection() (Model, tea.Cmd) {
 	}
 	m.directionButton.Content = directionLabel(m.from)
 	m.lexicon = &lexicon.Lexicon{}
-	m.words, m.choices, m.slot = nil, nil, 0
-	m = m.setTyped("")
+	m.input = m.input.SetLexicon(m.lexicon).Reset()
+	m.choice = m.choice.SetLexicon(m.lexicon).SetWords(nil)
 	m = m.computeLayout()
 	return m, m.load
 }
 
-func (m Model) newWords() []string {
+func (m Model) listUnknownWords() []string {
 	var words []string
 	seen := make(map[string]bool)
-	for _, word := range m.words {
+	for _, word := range m.input.Words() {
 		clean := lexicon.Clean(word)
 		normalized := storage.Normalize(clean)
 		if clean == "" || seen[normalized] || m.lexicon.Lookup(word).Status != lexicon.StatusUnknown {
@@ -392,7 +253,7 @@ func (m Model) newWords() []string {
 }
 
 func (m Model) memorize() tea.Cmd {
-	words := m.newWords()
+	words := m.listUnknownWords()
 	return func() tea.Msg {
 		for _, word := range words {
 			if err := m.services.Storage.AddWord(m.from, word); err != nil {
@@ -404,10 +265,10 @@ func (m Model) memorize() tea.Cmd {
 	}
 }
 
-// addTranslation opens the translation picker for the selected word,
-// storing it first when it is unknown.
-func (m Model) addTranslation() tea.Cmd {
-	word := lexicon.Clean(m.words[m.slot])
+// addTranslation opens the translation picker for word, storing it first
+// when it is unknown.
+func (m Model) addTranslation(word string) tea.Cmd {
+	word = lexicon.Clean(word)
 	if word == "" {
 		return nil
 	}
@@ -439,26 +300,8 @@ func (m Model) deleteTranslation(id int) tea.Cmd {
 	}
 }
 
-// translation returns the translated text: the selected translation of each
-// word, keeping its punctuation, or the word itself when untranslated.
-func (m Model) translation() string {
-	words := make([]string, len(m.words))
-	for i, word := range m.words {
-		words[i] = word
-		translations := m.lexicon.Lookup(word).Translations
-		if len(translations) == 0 {
-			continue
-		}
-		clean := lexicon.Clean(word)
-		start := strings.Index(word, clean)
-		chosen := translations[min(m.choices[i], len(translations)-1)].Word.Text
-		words[i] = word[:start] + chosen + word[start+len(clean):]
-	}
-	return strings.Join(words, " ")
-}
-
 func (m Model) copy() tea.Cmd {
-	text := m.translation()
+	text := m.choice.Translation()
 	return func() tea.Msg {
 		if err := clipboard.WriteAll(text); err != nil {
 			slog.Error("unable to write clipboard", "error", err)
@@ -478,6 +321,8 @@ func readClipboard() tea.Msg {
 }
 
 func (m Model) applyFocus() Model {
+	m.input.Focused = m.focus == focusInput
+	m.choice.Focused = m.focus == focusChoice
 	m.directionButton.Focused = m.focus == focusDirection
 	m.memorizeButton.Focused = m.focus == focusMemorize
 	return m
@@ -489,11 +334,8 @@ func (m Model) moveFocus(step focus) (Model, tea.Cmd) {
 		m = m.commit()
 	}
 	m.focus = (m.focus + focusOverflowed + step) % focusOverflowed
-	if m.focus == focusMemorize && len(m.newWords()) == 0 {
+	if m.focus == focusMemorize && len(m.listUnknownWords()) == 0 {
 		m.focus = (m.focus + focusOverflowed + step) % focusOverflowed
-	}
-	if m.focus == focusChoice {
-		m.slot = max(0, min(m.slot, len(m.words)-1))
 	}
 	m = m.applyFocus()
 	return m, m.setKeyMap()
@@ -507,6 +349,9 @@ func directionLabel(from string) string {
 }
 
 func (m Model) computeLayout() Model {
+	m.input.Width = m.width
+	m.choice.Width = m.width
+
 	// Buttons are sized to fit their content
 	for _, b := range []*button.Model{&m.directionButton, &m.memorizeButton} {
 		b.Width = lipgloss.Width(b.Content) + b.Style.GetHorizontalFrameSize()
@@ -515,140 +360,9 @@ func (m Model) computeLayout() Model {
 	return m
 }
 
-func statusStyle(status lexicon.Status) lipgloss.Style {
-	switch status {
-	case lexicon.StatusTranslated:
-		return translatedStyle
-	case lexicon.StatusUntranslated:
-		return untranslatedStyle
-	}
-	return unknownStyle
-}
-
-func (m Model) inputView(width int) string {
-	words := make([]string, 0, len(m.words)+1)
-	for _, word := range m.words {
-		words = append(words, statusStyle(m.lexicon.Lookup(word).Status).Render(word))
-	}
-
-	current := ""
-	if m.current() != "" {
-		current = statusStyle(m.lexicon.Lookup(m.current()).Status).Render(m.current())
-	}
-	if m.focus == focusInput {
-		current += cursor
-	}
-	if current != "" {
-		words = append(words, current)
-	}
-	text := strings.Join(words, " ")
-	if text == "" {
-		text = faintStyle.Render("Saisissez un texte à traduire")
-	}
-
-	style := styles.Box
-	if m.focus == focusInput {
-		style = styles.BoxFocused
-	}
-	return style.Width(width).Render(text)
-}
-
-func (m Model) suggestionsView() string {
-	if m.focus != focusInput || len(m.suggestions) == 0 {
-		return ""
-	}
-	rows := make([]string, 0, len(m.suggestions)+1)
-	for i, suggestion := range m.suggestions {
-		if i == m.suggestion {
-			rows = append(rows, selectedSuggestion.Render("▸ "+suggestion.Text))
-		} else {
-			rows = append(rows, suggestionStyle.Render(suggestion.Text))
-		}
-	}
-	if m.more {
-		rows = append(rows, suggestionStyle.Render("…"))
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
-}
-
-// columnView renders a word above its stacked items: its translations, or
-// a "?" when it has none, and the "+" adding a translation.
-func (m Model) columnView(i int) string {
-	word := m.words[i]
-	entry := m.lexicon.Lookup(word)
-	active := m.focus == focusChoice && i == m.slot
-
-	var items []string
-	var itemStyles []lipgloss.Style
-	for _, translation := range entry.Translations {
-		items = append(items, translation.Word.Text)
-		itemStyles = append(itemStyles, translatedStyle)
-	}
-	if len(items) == 0 {
-		items = append(items, "?")
-		itemStyles = append(itemStyles, statusStyle(entry.Status))
-	}
-	items = append(items, "+")
-	itemStyles = append(itemStyles, lipgloss.NewStyle())
-
-	header := faintStyle.Render(word)
-	if active {
-		header = activeHeaderStyle.Render(word)
-	}
-	rows := []string{header}
-	for j, item := range items {
-		style := itemStyles[j]
-		switch {
-		case j == m.choices[i] && active:
-			style = style.Reverse(true)
-		case j == m.choices[i]:
-			style = style.Bold(true)
-		default:
-			style = style.Faint(true)
-		}
-		rows = append(rows, style.Render(item))
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
-}
-
-func (m Model) translationView(width int) string {
-	style := styles.Box
-	if m.focus == focusChoice {
-		style = styles.BoxFocused
-	}
-	inner := max(1, width-style.GetHorizontalFrameSize())
-
-	var rows []string
-	var row []string
-	rowWidth := 0
-	for i := range m.words {
-		column := m.columnView(i)
-		w := lipgloss.Width(column)
-		if len(row) > 0 && rowWidth+columnGap+w > inner {
-			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, row...))
-			row, rowWidth = nil, 0
-		}
-		if len(row) > 0 {
-			row = append(row, strings.Repeat(" ", columnGap))
-			rowWidth += columnGap
-		}
-		row = append(row, column)
-		rowWidth += w
-	}
-	if len(row) > 0 {
-		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, row...))
-	}
-
-	text := strings.Join(rows, "\n\n")
-	if text == "" {
-		text = faintStyle.Render("La traduction apparaîtra ici")
-	}
-	return style.Width(width).Render(text)
-}
-
 func (m Model) View() tea.View {
 	memorizeButton := m.memorizeButton
-	if len(m.newWords()) == 0 {
+	if len(m.listUnknownWords()) == 0 {
 		memorizeButton.Style = disabledButtonStyle
 	}
 	buttons := lipgloss.JoinHorizontal(lipgloss.Center,
@@ -657,11 +371,11 @@ func (m Model) View() tea.View {
 		memorizeButton.View(),
 	)
 
-	parts := []string{buttons, m.inputView(m.width)}
-	if suggestions := m.suggestionsView(); suggestions != "" {
+	parts := []string{buttons, m.input.View()}
+	if suggestions := m.input.SuggestionsView(); suggestions != "" {
 		parts = append(parts, suggestions)
 	}
-	parts = append(parts, m.translationView(m.width))
+	parts = append(parts, m.choice.View())
 	if m.status != "" {
 		parts = append(parts, faintStyle.Render(m.status))
 	}

@@ -2,6 +2,8 @@ package translate
 
 import (
 	"charm.land/bubbles/v2/key"
+	"github.com/wolf29f/hushtongue/internal/tui/translate/components/wordchoice"
+	"github.com/wolf29f/hushtongue/internal/tui/translate/components/wordinput"
 )
 
 // keyMap shows the bindings of the focused element.
@@ -11,17 +13,8 @@ type keyMap struct {
 	FocusNext key.Binding
 	FocusPrev key.Binding
 
-	Commit         key.Binding
-	PrevSuggestion key.Binding
-	NextSuggestion key.Binding
-	Erase          key.Binding
-
-	PrevWord      key.Binding
-	NextWord      key.Binding
-	PrevCandidate key.Binding
-	NextCandidate key.Binding
-	Add           key.Binding
-	Delete        key.Binding
+	input  wordinput.KeyMap
+	choice wordchoice.KeyMap
 
 	Press key.Binding
 	Copy  key.Binding
@@ -37,7 +30,7 @@ type keyMap struct {
 func (k keyMap) ShortHelp() []key.Binding {
 	if k.focus == focusInput {
 		// The help key is typed in the input: show the essentials instead
-		return []key.Binding{k.Commit, k.FocusNext, k.Copy, k.QuitInput}
+		return []key.Binding{k.input.Commit, k.FocusNext, k.Copy, k.QuitInput}
 	}
 	return []key.Binding{k.HelpKey, k.Quit}
 }
@@ -48,17 +41,17 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	switch k.focus {
 	case focusInput:
 		return [][]key.Binding{
-			{k.Commit, k.Erase},
-			{k.PrevSuggestion, k.NextSuggestion},
+			{k.input.Commit, k.input.Erase},
+			{k.input.PrevSuggestion, k.input.NextSuggestion},
 			{k.FocusNext, k.FocusPrev},
 			{k.Copy, k.Paste},
 			{k.QuitInput},
 		}
 	case focusChoice:
 		return [][]key.Binding{
-			{k.PrevWord, k.NextWord},
-			{k.PrevCandidate, k.NextCandidate},
-			{k.Add, k.Delete},
+			{k.choice.PrevWord, k.choice.NextWord},
+			{k.choice.PrevCandidate, k.choice.NextCandidate},
+			{k.choice.Add, k.choice.Delete},
 			{k.FocusNext, k.FocusPrev},
 			{k.Copy, k.Paste},
 			{k.HelpKey},
@@ -84,6 +77,9 @@ func (k keyMap) Help() key.Binding {
 }
 
 var keys = keyMap{
+	input:  wordinput.Keys,
+	choice: wordchoice.Keys,
+
 	FocusNext: key.NewBinding(
 		key.WithKeys("tab"),
 		key.WithHelp("tab", "focus suivant"),
@@ -91,46 +87,6 @@ var keys = keyMap{
 	FocusPrev: key.NewBinding(
 		key.WithKeys("shift+tab"),
 		key.WithHelp("shift+tab", "focus précédent"),
-	),
-	Commit: key.NewBinding(
-		key.WithKeys("space", "enter"),
-		key.WithHelp("espace/⏎", "valider le mot"),
-	),
-	PrevSuggestion: key.NewBinding(
-		key.WithKeys("up"),
-		key.WithHelp("↑", "suggestion précédente"),
-	),
-	NextSuggestion: key.NewBinding(
-		key.WithKeys("down"),
-		key.WithHelp("↓", "suggestion suivante"),
-	),
-	Erase: key.NewBinding(
-		key.WithKeys("backspace"),
-		key.WithHelp("⌫", "effacer"),
-	),
-	PrevWord: key.NewBinding(
-		key.WithKeys("left"),
-		key.WithHelp("←", "mot précédent"),
-	),
-	NextWord: key.NewBinding(
-		key.WithKeys("right"),
-		key.WithHelp("→", "mot suivant"),
-	),
-	PrevCandidate: key.NewBinding(
-		key.WithKeys("up"),
-		key.WithHelp("↑", "traduction précédente"),
-	),
-	NextCandidate: key.NewBinding(
-		key.WithKeys("down"),
-		key.WithHelp("↓", "traduction suivante"),
-	),
-	Add: key.NewBinding(
-		key.WithKeys("a"),
-		key.WithHelp("a/⏎ sur +", "ajouter une traduction"),
-	),
-	Delete: key.NewBinding(
-		key.WithKeys("d", "backspace", "delete"),
-		key.WithHelp("d/⌫/suppr", "supprimer la traduction"),
 	),
 	Press: key.NewBinding(
 		key.WithKeys("enter"),
