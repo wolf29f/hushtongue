@@ -13,8 +13,11 @@ import (
 type Status int
 
 const (
+	// StatusUnknown: no root of the language has this normalized form.
 	StatusUnknown Status = iota
+	// StatusUntranslated: the root exists but has no translation yet.
 	StatusUntranslated
+	// StatusTranslated: the root has at least one translation.
 	StatusTranslated
 )
 
@@ -25,18 +28,29 @@ type Entry struct {
 	Translations []storage.Translation // insertion order
 }
 
-type indexed struct {
-	word       storage.Word
-	normalized string
-	trigrams   int
+// Lexicon holds the root words of one language and their translations, read
+// from storage once by Load: later changes to storage are not seen until the
+// next Load. Lookup tells what is known of a typed word, Complete suggests
+// roots for a prefix. The zero value is an empty lexicon.
+type Lexicon struct {
+	entries   map[string]Entry // by normalized form, for Lookup
+	completer trigramIndex     // for Complete
 }
 
-// Lexicon is an in-memory snapshot of the roots of one language, their
-// translations and a trigram index over them.
-type Lexicon struct {
-	entries map[string]Entry
-	words   []indexed
-	index   map[string][]int
+// trigramIndex finds the roots that look like a prefix being typed. Every
+// root is cut into trigrams (sequences of 3 runes, see trigrams); byTrigram
+// lists, for each trigram, the roots containing it. To complete a prefix, its
+// own trigrams are looked up in byTrigram, which gives the roots sharing at
+// least one of them, and these are ranked by similarity with the prefix.
+type trigramIndex struct {
+	candidates []candidate
+	byTrigram  map[string][]int // positions in candidates
+}
+
+type candidate struct {
+	word         storage.Word
+	normalized   string
+	trigramCount int // number of distinct trigrams of normalized
 }
 
 // Reader is the part of storage a lexicon is loaded from.
@@ -57,8 +71,8 @@ func Load(r Reader, language string) (*Lexicon, error) {
 	}
 
 	l := &Lexicon{
-		entries: make(map[string]Entry),
-		index:   make(map[string][]int),
+		entries:   make(map[string]Entry),
+		completer: trigramIndex{byTrigram: make(map[string][]int)},
 	}
 	for _, word := range words {
 		if word.Kind != storage.KindRoot {
@@ -73,16 +87,7 @@ func Load(r Reader, language string) (*Lexicon, error) {
 			entry.Status = StatusTranslated
 		}
 		l.entries[word.Normalized] = entry
-
-		grams := trigrams(word.Normalized)
-		for _, gram := range grams {
-			l.index[gram] = append(l.index[gram], len(l.words))
-		}
-		l.words = append(l.words, indexed{
-			word:       storage.Word{ID: word.ID, Text: word.Text},
-			normalized: word.Normalized,
-			trigrams:   len(grams),
-		})
+		l.completer.add(storage.Word{ID: word.ID, Text: word.Text}, word.Normalized)
 	}
 	return l, nil
 }
@@ -90,39 +95,59 @@ func Load(r Reader, language string) (*Lexicon, error) {
 // Lookup returns the entry of word, matched on its normalized form, leading
 // and trailing punctuation ignored.
 func (l *Lexicon) Lookup(word string) Entry {
-	return l.entries[key(word)]
+	return l.entries[normalizeTyped(word)]
 }
 
 // Complete returns up to limit words close to prefix, best first, and
 // whether more were left out.
 func (l *Lexicon) Complete(prefix string, limit int) (words []storage.Word, more bool) {
-	grams := trigrams(key(prefix))
+	return l.completer.complete(normalizeTyped(prefix), limit)
+}
+
+func (t *trigramIndex) add(word storage.Word, normalized string) {
+	grams := trigrams(normalized)
+	for _, gram := range grams {
+		t.byTrigram[gram] = append(t.byTrigram[gram], len(t.candidates))
+	}
+	t.candidates = append(t.candidates, candidate{
+		word:         word,
+		normalized:   normalized,
+		trigramCount: len(grams),
+	})
+}
+
+func (t *trigramIndex) complete(prefix string, limit int) (words []storage.Word, more bool) {
+	grams := trigrams(prefix)
 	if len(grams) == 0 {
 		return nil, false
 	}
 
-	shared := make(map[int]int)
+	sharedGrams := make(map[int]int) // by position in candidates
 	for _, gram := range grams {
-		for _, i := range l.index[gram] {
-			shared[i]++
+		for _, i := range t.byTrigram[gram] {
+			sharedGrams[i]++
 		}
 	}
 
+	// similarity is the Jaccard index of the two sets of trigrams: shared
+	// trigrams over distinct trigrams of both, 1 when the sets are equal. On
+	// a tie, the shorter root comes first, then the alphabetical order.
 	type match struct {
-		indexed
-		score float64
+		candidate
+		similarity float64
 	}
-	matches := make([]match, 0, len(shared))
-	for i, count := range shared {
-		w := l.words[i]
+	matches := make([]match, 0, len(sharedGrams))
+	for i, shared := range sharedGrams {
+		c := t.candidates[i]
+		union := len(grams) + c.trigramCount - shared
 		matches = append(matches, match{
-			indexed: w,
-			score:   float64(count) / float64(len(grams)+w.trigrams-count),
+			candidate:  c,
+			similarity: float64(shared) / float64(union),
 		})
 	}
 	slices.SortFunc(matches, func(a, b match) int {
 		return cmp.Or(
-			cmp.Compare(b.score, a.score),
+			cmp.Compare(b.similarity, a.similarity),
 			cmp.Compare(len(a.normalized), len(b.normalized)),
 			cmp.Compare(a.normalized, b.normalized),
 			cmp.Compare(a.word.ID, b.word.ID),
@@ -145,7 +170,7 @@ func Clean(word string) string {
 	return strings.TrimFunc(word, unicode.IsPunct)
 }
 
-func key(word string) string {
+func normalizeTyped(word string) string {
 	return storage.Normalize(Clean(word))
 }
 
