@@ -263,6 +263,21 @@ func TestMergeWords(t *testing.T) {
 			t.Errorf("word deleted despite the error: %v", err)
 		}
 	})
+
+	t.Run("rejects merging a word into itself", func(t *testing.T) {
+		dao := newTestDAO(t)
+		mer := insertWord(t, dao, "source", "mer", "root")
+		ailo := insertWord(t, dao, "con", "ailo", "root")
+		insertTranslation(t, dao, mer, ailo)
+
+		if err := dao.MergeWords(mer, mer); err == nil {
+			t.Fatal("MergeWords() succeeded unexpectedly")
+		}
+		if _, err := dao.GetWord(mer); err != nil {
+			t.Errorf("word deleted despite the error: %v", err)
+		}
+		assertTranslations(t, dao, mer, "ailo")
+	})
 }
 
 func TestDeleteWord(t *testing.T) {

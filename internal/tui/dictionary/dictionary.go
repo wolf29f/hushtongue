@@ -46,12 +46,18 @@ type Model struct {
 	width, height int
 }
 
+// NewModel creates the dictionary page, listing the language the user knows
+// the least.
 func NewModel(services *services.Services) Model {
+	language := storage.LangCon
+	if config.IsForGM {
+		language = storage.LangSource
+	}
 
 	m := Model{
 		services: services,
 
-		language: storage.LangSource,
+		language: language,
 		focus:    focusWordList,
 
 		addButton: button.New("Ajouter", tui.PushModal(inputmodal.New(inputmodal.Config{
@@ -61,7 +67,7 @@ func NewModel(services *services.Services) Model {
 			OnSubmit:    wordSubmitted,
 		}))),
 		switchLangButton: button.New(
-			switchLangLabel(storage.LangSource),
+			switchLangLabel(language),
 			func() tea.Msg { return switchLangPressedMsg{} },
 		),
 	}
@@ -152,11 +158,14 @@ func (m Model) applyFocus() Model {
 }
 
 func (m Model) handleWordSubmittedMsg(msg wordSubmittedMsg) (tea.Model, tea.Cmd) {
-	slog.Debug("handling new word message", "word", msg.word)
+	word := strings.TrimSpace(msg.word)
+	if word == "" {
+		return m, nil
+	}
 
-	if err := m.services.Storage.AddWord(m.language, msg.word); err != nil {
+	if err := m.services.Storage.AddWord(m.language, word); err != nil {
 		slog.Error("unable to add word", "error", err)
-		return m, tui.ShowError(fmt.Sprintf("Impossible d'ajouter le mot « %s ».", msg.word))
+		return m, tui.ShowError(fmt.Sprintf("Impossible d'ajouter le mot « %s ».", word))
 	}
 
 	// Refresh the word list after adding a new word
@@ -172,8 +181,6 @@ func (m Model) handleWordSubmittedMsg(msg wordSubmittedMsg) (tea.Model, tea.Cmd)
 }
 
 func (m Model) handleLangSwitch() (tea.Model, tea.Cmd) {
-	slog.Debug("handling language switch message")
-
 	if m.language == storage.LangSource {
 		m.language = storage.LangCon
 	} else {
@@ -194,8 +201,6 @@ func (m Model) handleLangSwitch() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleWordSelectedMsg(msg wordlist.WordSelectedMsg) (tea.Model, tea.Cmd) {
-	slog.Debug("handling word selected message", "wordID", msg.ID)
-
 	return m, tui.PushPage(wordview.NewModel(msg.ID, m.services))
 }
 

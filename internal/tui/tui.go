@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"log/slog"
 	"strings"
 
 	"charm.land/bubbles/v2/help"
@@ -122,9 +121,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(msg.page.Init(), m.sizeCmd())
 
 	case pushKeyMapMsg:
-		slog.Debug("received keymap msg")
 		m = m.setKeyMap(msg.keyMap)
-		slog.Debug("updated keymap msg", "keyMap", m.keyMap, "footer", m.footer)
 		return m, m.sizeCmd()
 
 	case pushModalMsg:

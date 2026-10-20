@@ -2,6 +2,7 @@ package startup
 
 import (
 	"fmt"
+	"log/slog"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
@@ -13,6 +14,9 @@ import (
 
 type Model struct {
 	services *services.Services
+
+	// State
+	failed bool
 
 	// UI stuff
 	width, height int
@@ -35,7 +39,8 @@ func (m Model) Init() tea.Cmd {
 		m.spinner.Tick,
 		func() tea.Msg {
 			if err := m.services.Storage.Init(); err != nil {
-				return err
+				slog.Error("unable to initialize storage", "error", err)
+				return InitFailedMsg{}
 			}
 			return InitDoneMsg{}
 		},
@@ -49,6 +54,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case InitDoneMsg:
 		return m, tui.ReplacePage(home.NewModel(m.services))
+	case InitFailedMsg:
+		m.failed = true
+		return m, nil
+	case tea.KeyPressMsg:
+		if m.failed {
+			return m, tea.Quit
+		}
 	}
 
 	var cmd tea.Cmd
@@ -57,11 +69,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
+	content := fmt.Sprintf("%s Chargement...", m.spinner.View())
+	if m.failed {
+		content = "Impossible d'ouvrir le dictionnaire, consultez les logs.\n\nAppuyez sur une touche pour quitter."
+	}
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(1, 2).
-		Render(fmt.Sprintf("%s Chargement...", m.spinner.View()))
+		Render(content)
 
 	return tea.NewView(lipgloss.Place(
 		m.width, m.height,

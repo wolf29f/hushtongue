@@ -13,19 +13,56 @@ Two apps, one engine:
 
 Each player's notebook evolves independently and is never synced with the GM's dictionary or other players' notebooks — that's the point: everyone learns the conlang imperfectly, at their own pace, just like a real second language picked up through play.
 
-Both apps share the same translation UI: type in either language, get live color-coded feedback per word (known / known-but-untranslated / unknown), autocomplete via an in-memory trigram index, and navigate multiple candidate translations when a word has more than one.
+|                                                  | `langgen` (GM) | `langlearn` (player) |
+| ------------------------------------------------ | -------------- | -------------------- |
+| Translate, in both directions                    | ✅              | ✅                    |
+| Browse and edit the dictionary                   | ✅              | ✅                    |
+| Add and delete translations by hand              | ✅              | ✅                    |
+| Copy the translation to the clipboard            | ✅              | ✅                    |
+| Word kinds (root/prefix/suffix)                  | ✅              | ❌                    |
+| Translation generation                           | ✅              | ❌                    |
 
-## Status
+Both apps default to the language the user knows the least: the source language for the GM, the conlang for players. This applies to the translation direction and to the dictionary's word list.
 
-Work in progress. See [`specifications.md`](specifications.md) and [`pages.md`](pages.md) for the full design.
+## Screens
 
-- **Dictionary screen** — done: browse and filter the words of both languages, add, rename and delete words, link translations by hand (picking an existing word or typing a new one), and navigate from a word to its translations. Renaming a word into an existing one offers to merge them. In `langgen` only: set a word's kind (root/prefix/suffix) and generate translations.
-- **Translate screen** — not started yet.
+### Translate
 
-## Tech
+- A button switches the direction; switching clears the input, after a confirmation when it isn't empty.
+- The text is typed word by word, a word being committed on space or enter. Each word is colored as it is typed: green when it has a translation, orange when it is known but not translated yet, red when it is unknown.
+- Up to 5 completions of the word being typed are listed (followed by `…` when there are more), ranked by trigram similarity. Up/down browse them, going back past the first one returns to the typed word.
+- Tab/shift+tab move the focus between the input, the translation choice and the buttons.
+- In the translation choice, each word shows its translations stacked in a column: left/right change word, up/down change translation. The last item of each column is a `+` adding a translation through the translation picker; `d` deletes the selected translation link.
+- A button stores the unknown words of the input in the dictionary.
+- `ctrl+y` copies the translated text, each word replaced by its selected translation; `ctrl+v` pastes a text to translate.
 
-- Go, [Bubble Tea](https://charm.land) for the TUI
-- SQLite (`modernc.org/sqlite`, pure Go, no cgo) — one database file per user (GM or player)
+### Dictionary
+
+- Lists the words of one language; a button switches the language, another adds a word. `/` filters the list.
+- Enter opens a word's sheet, which lists its translations (enter on a translation opens that word's sheet) and lets you:
+  - add a translation, picking an existing word of the other language or typing a new one (stored as a root);
+  - delete a translation link, the target word being kept;
+  - rename the word, translation links being kept. Renaming it into an existing word offers to merge them: their translations are grouped and the existing word's spelling is kept;
+  - delete the word and its translation links, after a confirmation;
+  - `langgen` only: change the word's kind, which deletes its translation links (after a confirmation when it has some), and generate a translation for a source word.
+
+### Translation generation (`langgen`)
+
+- Every decomposition of the source word into known prefixes, a root and known suffixes is listed (`anti-voiture-ette`), the whole word as root included.
+- Each decomposition is combined with the translations of each part, one proposal per combination: complete existing translations first, then by number of translated parts, pure generation last. Existing parts are green, generated ones red.
+- A part without translation gets a generated conlang word: open syllables, soft consonants, 2-3 syllables for a root and 1 for an affix. Generation is deterministic — a given source word always gives the same result — unless that result is already taken by a conlang word of the same kind, in which case a variant is used.
+- Applying a proposal creates the missing words and links. With several parts, the source word is also linked to the concatenated conlang word, stored as a root.
+
+## Design
+
+- Go, [Bubble Tea](https://charm.land) for the TUI. A single engine (`internal/tui`) is shared by both apps: the `gm` build tag sets `config.IsForGM`, which gates the GM-only features. Word kinds and generation share that one flag, since generating words without being able to set their kind makes no sense.
+- SQLite with `modernc.org/sqlite` (pure Go, no cgo, so cross-compiling needs no C toolchain), one database file per user. Two tables: `words` (language, text, normalized form, kind) and `translations`, a many-to-many link between a source word and a conlang word.
+- Words are deduplicated on their normalized form (lowercased, accents stripped), per language and kind.
+- Several translations of a word are shown in insertion order, without ranking.
+- Linking only words of different languages is checked in Go, SQLite having no cross-row constraint without a trigger.
+- Autocomplete uses an in-memory trigram index built when the translation page loads the dictionary, rather than SQLite FTS5: at a TTRPG's scale (a few thousand words), it isn't worth a virtual table and its sync triggers.
+
+FTS5 can be reconsidered if the lexicon ever grows to tens of thousands of words.
 
 ## Installing and running
 

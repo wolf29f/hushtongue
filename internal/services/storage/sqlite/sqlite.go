@@ -158,6 +158,10 @@ func (dao *DAO) SaveWord(word storage.WordDetails) (storage.WordDetails, error) 
 // MergeWords moves the translations of fromID to intoID, a word of the same
 // language, then deletes fromID. A link both words share keeps intoID's.
 func (dao *DAO) MergeWords(fromID, intoID int) error {
+	if fromID == intoID {
+		return fmt.Errorf("merging word %d into itself", fromID)
+	}
+
 	tx, err := dao.DB.Begin()
 	if err != nil {
 		return err
