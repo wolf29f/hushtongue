@@ -8,19 +8,19 @@ Built for an isolated, ancient, peaceful island people whose language players le
 
 Two apps, one engine:
 
-- **`langgen`** (GM) — full authority over the dictionary: manual word entry, automatic word generation, and linguistic structure (prefixes/suffixes/roots).
-- **`langlearn`** (player) — a personal, partial notebook filled in by hand during play. No access to the GM's master dictionary.
+- **`hushtongue-gm`** (GM) — full authority over the dictionary: manual word entry, automatic word generation, and linguistic structure (prefixes/suffixes/roots).
+- **`hushtongue-player`** (player) — a personal, partial notebook filled in by hand during play. No access to the GM's master dictionary.
 
 Each player's notebook evolves independently and is never synced with the GM's dictionary or other players' notebooks — that's the point: everyone learns the conlang imperfectly, at their own pace, just like a real second language picked up through play.
 
-|                                                  | `langgen` (GM) | `langlearn` (player) |
-| ------------------------------------------------ | -------------- | -------------------- |
-| Translate, in both directions                    | ✅              | ✅                    |
-| Browse and edit the dictionary                   | ✅              | ✅                    |
-| Add and delete translations by hand              | ✅              | ✅                    |
-| Copy the translation to the clipboard            | ✅              | ✅                    |
-| Word kinds (root/prefix/suffix)                  | ✅              | ❌                    |
-| Translation generation                           | ✅              | ❌                    |
+|                                                  | `hushtongue-gm` (GM) | `hushtongue-player` (player) |
+| ------------------------------------------------ | -------------------- | ---------------------------- |
+| Translate, in both directions                    | ✅                   | ✅                           |
+| Browse and edit the dictionary                   | ✅                   | ✅                           |
+| Add and delete translations by hand              | ✅                   | ✅                           |
+| Copy the translation to the clipboard            | ✅                   | ✅                           |
+| Word kinds (root/prefix/suffix)                  | ✅                   | ❌                           |
+| Translation generation                           | ✅                   | ❌                           |
 
 Both apps default to the language the user knows the least: the source language for the GM, the conlang for players. This applies to the translation direction and to the dictionary's word list.
 
@@ -44,9 +44,9 @@ Both apps default to the language the user knows the least: the source language 
   - delete a translation link, the target word being kept;
   - rename the word, translation links being kept. Renaming it into an existing word offers to merge them: their translations are grouped and the existing word's spelling is kept;
   - delete the word and its translation links, after a confirmation;
-  - `langgen` only: change the word's kind, which deletes its translation links (after a confirmation when it has some), and generate a translation for a source word.
+  - `hushtongue-gm` only: change the word's kind, which deletes its translation links (after a confirmation when it has some), and generate a translation for a source word.
 
-### Translation generation (`langgen`)
+### Translation generation (`hushtongue-gm`)
 
 - Every decomposition of the source word into known prefixes, a root and known suffixes is listed (`anti-voiture-ette`), the whole word as root included.
 - Each decomposition is combined with the translations of each part, one proposal per combination: complete existing translations first, then by number of translated parts, pure generation last. Existing parts are green, generated ones red.
@@ -66,7 +66,7 @@ FTS5 can be reconsidered if the lexicon ever grows to tens of thousands of words
 
 ## Installing and running
 
-Download the app from the [latest release](https://github.com/wolf29f/hushtongue/releases/latest): **`langlearn`** for players, **`langgen`** for the GM. Pick the file matching your system:
+Download the app from the [latest release](https://github.com/wolf29f/hushtongue/releases/latest): **`hushtongue-player`** for players, **`hushtongue-gm`** for the GM. Pick the file matching your system:
 
 | System | File |
 | --- | --- |
@@ -82,18 +82,18 @@ The apps run in a terminal: a modern one with Unicode and colors gives the best 
 ### Linux
 
 ```sh
-tar -xzf langlearn-linux-amd64.tar.gz
-./langlearn
+tar -xzf hushtongue-player-linux-amd64.tar.gz
+./hushtongue-player
 ```
 
-To launch it from anywhere, move it to a directory of your `PATH`, e.g. `mv langlearn ~/.local/bin/`.
+To launch it from anywhere, move it to a directory of your `PATH`, e.g. `mv hushtongue-player ~/.local/bin/`.
 
 ### macOS
 
 ```sh
-tar -xzf langlearn-darwin-arm64.tar.gz
-xattr -d com.apple.quarantine langlearn
-./langlearn
+tar -xzf hushtongue-player-darwin-arm64.tar.gz
+xattr -d com.apple.quarantine hushtongue-player
+./hushtongue-player
 ```
 
 The binaries aren't signed, so macOS blocks them when downloaded from a browser: the `xattr` command lifts that block (it reports `No such xattr` when there is none, which is fine). Alternatively, try to launch it once, then allow it in System Settings → Privacy & Security → "Open Anyway".
@@ -103,7 +103,7 @@ The binaries aren't signed, so macOS blocks them when downloaded from a browser:
 Run the `.exe` from Windows Terminal or PowerShell:
 
 ```powershell
-.\langlearn-windows-amd64.exe
+.\hushtongue-player-windows-amd64.exe
 ```
 
 Double-clicking it also works and opens it in a console window. The binaries aren't signed, so Windows SmartScreen may warn on first launch: click "More info", then "Run anyway".
@@ -118,31 +118,31 @@ Each app stores its dictionary in a single SQLite file, and its logs next to it:
 | macOS | `~/Library/Application Support/hushtongue/hushtongue.db` | `~/Library/Application Support/hushtongue/app.log` |
 | Windows | `%LOCALAPPDATA%\hushtongue\hushtongue.db` | `%LOCALAPPDATA%\hushtongue\app.log` |
 
-Back up or move a dictionary by copying that file. `langgen` and `langlearn` use the same path: on the same computer, they share the same dictionary.
+Back up or move a dictionary by copying that file. `hushtongue-gm` and `hushtongue-player` use the same path: on the same computer, they share the same dictionary.
 
 ## Running from source
 
 ```sh
-go run -tags gm ./cmd   # langgen, the GM app
-go run ./cmd            # langlearn, the player app
+go run -tags gm ./cmd   # hushtongue-gm, the GM app
+go run ./cmd            # hushtongue-player, the player app
 ```
 
 ## Building
 
 The `gm` build tag selects the target:
 
-- with `-tags gm`: **`langgen`**, the GM app
-- without it: **`langlearn`**, the player app
+- with `-tags gm`: **`hushtongue-gm`**, the GM app
+- without it: **`hushtongue-player`**, the player app
 
 ```sh
-go build -o dist/langgen -tags gm ./cmd
-go build -o dist/langlearn ./cmd
+go build -o dist/hushtongue-gm -tags gm ./cmd
+go build -o dist/hushtongue-player ./cmd
 ```
 
 Without a version, the apps show `dev` in the bottom right corner. To set one:
 
 ```sh
-go build -o dist/langgen -tags gm \
+go build -o dist/hushtongue-gm -tags gm \
   -ldflags "-X github.com/wolf29f/hushtongue/internal/config.Version=v0.1.0" ./cmd
 ```
 

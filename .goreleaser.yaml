@@ -1,8 +1,8 @@
 version: 2
 
 builds:
-  - id: langgen
-    binary: langgen
+  - id: hushtongue-gm
+    binary: hushtongue-gm
     main: ./cmd
     tags: [gm]
     env: [CGO_ENABLED=0]
@@ -12,8 +12,8 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
 
-  - id: langlearn
-    binary: langlearn
+  - id: hushtongue-player
+    binary: hushtongue-player
     main: ./cmd
     env: [CGO_ENABLED=0]
     flags: [-trimpath]
@@ -24,16 +24,16 @@ builds:
 
 archives:
   # One archive per app, rather than both apps in the same archive
-  - id: langgen
-    ids: [langgen]
+  - id: hushtongue-gm
+    ids: [hushtongue-gm]
     formats: [tar.gz]
     name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [binary]
 
-  - id: langlearn
-    ids: [langlearn]
+  - id: hushtongue-player
+    ids: [hushtongue-player]
     formats: [tar.gz]
     name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
