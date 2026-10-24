@@ -22,9 +22,6 @@ type DAO struct {
 
 var _ storage.Storage = (*DAO)(nil)
 
-//go:embed migration.sql
-var migration string
-
 // Load opens a connection to the SQLite database at the given path and returns a DAO.
 // If the path is empty, it defaults to the standard location in the user's XDG data home.
 func Load(path string) (*DAO, error) {
@@ -62,8 +59,11 @@ func Load(path string) (*DAO, error) {
 
 func (dao *DAO) Init() error {
 	slog.Info("Initializing SQLite database")
-	_, err := dao.DB.Exec(migration)
-	return err
+	migrations, err := loadMigrations()
+	if err != nil {
+		return err
+	}
+	return migrate(dao.DB, migrations)
 }
 
 func (dao *DAO) Close() error {

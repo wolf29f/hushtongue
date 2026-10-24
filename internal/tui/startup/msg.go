@@ -2,4 +2,6 @@ package startup
 
 type InitDoneMsg struct{}
 
-type InitFailedMsg struct{}
+type InitFailedMsg struct {
+	Err error
+}

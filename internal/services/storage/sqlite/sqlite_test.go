@@ -82,9 +82,10 @@ func TestInit(t *testing.T) {
 	t.Run("creates the schema", func(t *testing.T) {
 		dao := newTestDAO(t)
 		assertSchemaMigrated(t, dao)
+		assertUserVersion(t, dao, 1)
 	})
 
-	t.Run("running the migration again on an existing database is a no-op", func(t *testing.T) {
+	t.Run("running the migrations again on an existing database is a no-op", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "test.db")
 
 		dao, err := sqlite.Load(path)
@@ -96,8 +97,6 @@ func TestInit(t *testing.T) {
 		}
 		closeDAO(t, dao)
 
-		// Init() runs the migration on every startup, not just on a fresh
-		// database, so running it on the reopened file must not error.
 		dao, err = sqlite.Load(path)
 		if err != nil {
 			t.Fatalf("Load() failed on reopen: %v", err)
@@ -106,7 +105,143 @@ func TestInit(t *testing.T) {
 		if err := dao.Init(); err != nil {
 			t.Fatalf("Init() is not idempotent: %v", err)
 		}
+		assertUserVersion(t, dao, 1)
 	})
+
+	t.Run("versions a database created before migrations were versioned", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "test.db")
+
+		dao, err := sqlite.Load(path)
+		if err != nil {
+			t.Fatalf("Load() failed: %v", err)
+		}
+		if err := dao.Init(); err != nil {
+			t.Fatalf("Init() failed: %v", err)
+		}
+		mer := insertWord(t, dao, "source", "mer", "root")
+		if _, err := dao.DB.Exec("PRAGMA user_version = 0"); err != nil {
+			t.Fatal(err)
+		}
+		closeDAO(t, dao)
+
+		dao, err = sqlite.Load(path)
+		if err != nil {
+			t.Fatalf("Load() failed on reopen: %v", err)
+		}
+		defer closeDAO(t, dao)
+		if err := dao.Init(); err != nil {
+			t.Fatalf("Init() failed on an unversioned database: %v", err)
+		}
+		assertUserVersion(t, dao, 1)
+		if _, err := dao.GetWord(mer); err != nil {
+			t.Errorf("existing word lost: %v", err)
+		}
+	})
+
+	t.Run("refuses a database from a newer version", func(t *testing.T) {
+		dao := newTestDAO(t)
+		if _, err := dao.DB.Exec("PRAGMA user_version = 99"); err != nil {
+			t.Fatal(err)
+		}
+		if err := dao.Init(); !errors.Is(err, storage.ErrSchemaTooNew) {
+			t.Fatalf("Init() error = %v, want %v", err, storage.ErrSchemaTooNew)
+		}
+	})
+}
+
+func TestMigrate(t *testing.T) {
+	t.Run("applies only the migrations above the current version", func(t *testing.T) {
+		dao := newEmptyTestDAO(t)
+		migrations := []string{
+			"CREATE TABLE a (id INTEGER)",
+			"CREATE TABLE b (id INTEGER)",
+		}
+		if err := sqlite.Migrate(dao.DB, migrations[:1]); err != nil {
+			t.Fatalf("Migrate() failed: %v", err)
+		}
+		if err := sqlite.Migrate(dao.DB, migrations); err != nil {
+			t.Fatalf("Migrate() failed on the second run: %v", err)
+		}
+		assertUserVersion(t, dao, 2)
+	})
+
+	t.Run("rolls back a failing migration", func(t *testing.T) {
+		dao := newEmptyTestDAO(t)
+		migrations := []string{
+			"CREATE TABLE a (id INTEGER)",
+			"CREATE TABLE b (id INTEGER); INSERT INTO missing VALUES (1)",
+		}
+		if err := sqlite.Migrate(dao.DB, migrations); err == nil {
+			t.Fatal("Migrate() succeeded unexpectedly")
+		}
+		assertUserVersion(t, dao, 1)
+
+		var count int
+		if err := dao.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'b'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Error("table b from the failed migration was kept")
+		}
+	})
+
+	t.Run("keeps child rows when a migration rebuilds their parent table", func(t *testing.T) {
+		dao := newEmptyTestDAO(t)
+		migrations := []string{
+			parentChildSchema,
+			`CREATE TABLE parent_new (id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '');
+			INSERT INTO parent_new (id) SELECT id FROM parent;
+			DROP TABLE parent;
+			ALTER TABLE parent_new RENAME TO parent;`,
+		}
+		if err := sqlite.Migrate(dao.DB, migrations); err != nil {
+			t.Fatalf("Migrate() failed: %v", err)
+		}
+		assertUserVersion(t, dao, 2)
+		assertForeignKeysEnabled(t, dao)
+		assertRowCount(t, dao, "child", 1)
+	})
+
+	t.Run("rejects a migration that leaves orphaned rows", func(t *testing.T) {
+		dao := newEmptyTestDAO(t)
+		migrations := []string{
+			parentChildSchema,
+			"DELETE FROM parent",
+		}
+		if err := sqlite.Migrate(dao.DB, migrations); err == nil {
+			t.Fatal("Migrate() succeeded unexpectedly")
+		}
+		assertUserVersion(t, dao, 1)
+		assertForeignKeysEnabled(t, dao)
+		assertRowCount(t, dao, "parent", 1)
+	})
+}
+
+const parentChildSchema = `CREATE TABLE parent (id INTEGER PRIMARY KEY);
+CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id) ON DELETE CASCADE);
+INSERT INTO parent (id) VALUES (1);
+INSERT INTO child (id, parent_id) VALUES (1, 1);`
+
+func assertRowCount(t *testing.T, dao *sqlite.DAO, table string, want int) {
+	t.Helper()
+	var got int
+	if err := dao.DB.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&got); err != nil {
+		t.Fatalf("counting %s rows: %v", table, err)
+	}
+	if got != want {
+		t.Errorf("%s has %d rows, want %d", table, got, want)
+	}
+}
+
+func assertUserVersion(t *testing.T, dao *sqlite.DAO, want int) {
+	t.Helper()
+	var got int
+	if err := dao.DB.QueryRow("PRAGMA user_version").Scan(&got); err != nil {
+		t.Fatalf("querying user_version pragma: %v", err)
+	}
+	if got != want {
+		t.Errorf("user_version = %d, want %d", got, want)
+	}
 }
 
 func assertForeignKeysEnabled(t *testing.T, dao *sqlite.DAO) {
@@ -658,6 +793,16 @@ func newTestDAO(t *testing.T) *sqlite.DAO {
 	if err := dao.Init(); err != nil {
 		t.Fatalf("Init() failed: %v", err)
 	}
+	return dao
+}
+
+func newEmptyTestDAO(t *testing.T) *sqlite.DAO {
+	t.Helper()
+	dao, err := sqlite.Load(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	t.Cleanup(func() { closeDAO(t, dao) })
 	return dao
 }
 

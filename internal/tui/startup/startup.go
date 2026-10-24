@@ -1,6 +1,7 @@
 package startup
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -8,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/wolf29f/hushtongue/internal/services"
+	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/home"
 )
@@ -16,7 +18,7 @@ type Model struct {
 	services *services.Services
 
 	// State
-	failed bool
+	initErr error
 
 	// UI stuff
 	width, height int
@@ -40,7 +42,7 @@ func (m Model) Init() tea.Cmd {
 		func() tea.Msg {
 			if err := m.services.Storage.Init(); err != nil {
 				slog.Error("unable to initialize storage", "error", err)
-				return InitFailedMsg{}
+				return InitFailedMsg{Err: err}
 			}
 			return InitDoneMsg{}
 		},
@@ -55,10 +57,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case InitDoneMsg:
 		return m, tui.ReplacePage(home.NewModel(m.services))
 	case InitFailedMsg:
-		m.failed = true
+		m.initErr = msg.Err
 		return m, nil
 	case tea.KeyPressMsg:
-		if m.failed {
+		if m.initErr != nil {
 			return m, tea.Quit
 		}
 	}
@@ -70,7 +72,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() tea.View {
 	content := fmt.Sprintf("%s Chargement...", m.spinner.View())
-	if m.failed {
+	switch {
+	case errors.Is(m.initErr, storage.ErrSchemaTooNew):
+		content = "Ce dictionnaire a été créé par une version plus récente de l'application.\n\nVeuillez mettre à jour l'application pour l'ouvrir.\n\nAppuyez sur une touche pour quitter."
+	case m.initErr != nil:
 		content = "Impossible d'ouvrir le dictionnaire, consultez les logs.\n\nAppuyez sur une touche pour quitter."
 	}
 
