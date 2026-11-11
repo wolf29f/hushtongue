@@ -11,8 +11,6 @@ type lexiconLoadedMsg struct {
 
 type switchDirectionPressedMsg struct{}
 
-type switchDirectionConfirmedMsg struct{}
-
 type memorizePressedMsg struct{}
 
 type translationDeleteConfirmedMsg struct {

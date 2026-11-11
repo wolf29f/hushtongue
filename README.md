@@ -28,7 +28,7 @@ Both apps default to the language the user knows the least: the source language 
 
 ### Translate
 
-- A button switches the direction; switching clears the input, after a confirmation when it isn't empty.
+- A button switches the direction; the input is kept and read in the new language.
 - The text is typed word by word, a word being committed on space or enter. Each word is colored as it is typed: green when it has a translation, orange when it is known but not translated yet, red when it is unknown.
 - Up to 5 completions of the word being typed are listed (followed by `…` when there are more), ranked by trigram similarity. Up/down browse them, going back past the first one returns to the typed word.
 - Tab/shift+tab move the focus between the input, the translation choice and the buttons.

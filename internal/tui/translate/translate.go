@@ -124,8 +124,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "Traduction copiée dans le presse-papiers."
 		return m, nil
 	case switchDirectionPressedMsg:
-		return m.handleSwitchDirectionPressedMsg()
-	case switchDirectionConfirmedMsg:
 		return m.switchDirection()
 	case memorizePressedMsg:
 		return m, m.memorize()
@@ -212,17 +210,6 @@ func (m Model) quit() tea.Cmd {
 	}))
 }
 
-func (m Model) handleSwitchDirectionPressedMsg() (Model, tea.Cmd) {
-	if m.input.IsEmpty() {
-		return m.switchDirection()
-	}
-	return m, tui.PushModal(confirmmodal.New(confirmmodal.Config{
-		Title:        "Changer de direction ?\nLa saisie sera effacée.",
-		ConfirmLabel: "Changer",
-		OnConfirm:    func() tea.Msg { return switchDirectionConfirmedMsg{} },
-	}))
-}
-
 func (m Model) switchDirection() (Model, tea.Cmd) {
 	if m.from == storage.LangSource {
 		m.from = storage.LangCon
@@ -231,8 +218,9 @@ func (m Model) switchDirection() (Model, tea.Cmd) {
 	}
 	m.directionButton.Content = directionLabel(m.from)
 	m.lexicon = &lexicon.Lexicon{}
-	m.input = m.input.SetLexicon(m.lexicon).Reset()
-	m.choice = m.choice.SetLexicon(m.lexicon).SetWords(nil)
+	m.input = m.input.SetLexicon(m.lexicon)
+	// Choices made in the other direction are meaningless
+	m.choice = m.choice.SetWords(nil).SetLexicon(m.lexicon).SetWords(m.input.Words())
 	m = m.computeLayout()
 	return m, m.load
 }
