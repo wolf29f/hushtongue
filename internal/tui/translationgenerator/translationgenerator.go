@@ -38,7 +38,8 @@ func (i item) source() string {
 	return strings.Join(parts, partSeparator)
 }
 
-// con renders the con parts, green when known, red when generated.
+// con renders the con parts, green when known, red when generated,
+// followed by the homonyms the proposal would create.
 func (i item) con() string {
 	parts := make([]string, len(i.Parts))
 	for j, part := range i.Parts {
@@ -48,7 +49,16 @@ func (i item) con() string {
 		}
 		parts[j] = style.Render(part.Con)
 	}
-	return strings.Join(parts, partSeparator)
+	con := strings.Join(parts, partSeparator)
+	if len(i.Homonyms) == 0 {
+		return con
+	}
+
+	homonyms := make([]string, len(i.Homonyms))
+	for j, homonym := range i.Homonyms {
+		homonyms[j] = "« " + homonym + " »"
+	}
+	return con + homonymStyle.Render("homonyme de "+strings.Join(homonyms, ", "))
 }
 
 type proposalDelegate struct {

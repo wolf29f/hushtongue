@@ -10,4 +10,5 @@ var (
 	selectedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
 	knownStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	generatedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	homonymStyle   = lipgloss.NewStyle().Faint(true).PaddingLeft(columnGap)
 )

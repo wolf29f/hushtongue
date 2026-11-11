@@ -19,6 +19,9 @@ const minRootLength = 2
 // prefixes, root, suffixes.
 type Proposal struct {
 	Parts []storage.TranslationPart
+	// Homonyms lists the source words already translated by the con root
+	// the parts concatenate to, which applying the proposal would share.
+	Homonyms []string
 }
 
 func (p Proposal) known() int {
@@ -72,6 +75,7 @@ func (s *Service) Propose(wordID int) ([]Proposal, error) {
 	b := builder{
 		storage:   s.storage,
 		roots:     make(map[string]storage.WordDetails),
+		conRoots:  make(map[string]storage.WordDetails),
 		taken:     make(map[string]map[string]bool),
 		generated: make(map[string]string),
 	}
@@ -87,6 +91,9 @@ func (s *Service) Propose(wordID int) ([]Proposal, error) {
 	}
 	for _, con := range cons {
 		b.take(con.Kind, con.Normalized)
+		if con.Kind == storage.KindRoot {
+			b.conRoots[con.Normalized] = con
+		}
 	}
 
 	segmentations := [][]section{{known(word)}}
@@ -101,6 +108,24 @@ func (s *Service) Propose(wordID int) ([]Proposal, error) {
 			return nil, err
 		}
 		proposals = append(proposals, translated...)
+	}
+
+	homonyms := make(map[string][]string)
+	for i, proposal := range proposals {
+		if len(proposal.Parts) < 2 {
+			continue
+		}
+		var concatenated strings.Builder
+		for _, part := range proposal.Parts {
+			concatenated.WriteString(part.Con)
+		}
+		normalized := storage.Normalize(concatenated.String())
+		if _, ok := homonyms[normalized]; !ok {
+			if homonyms[normalized], err = b.homonyms(word.ID, normalized); err != nil {
+				return nil, err
+			}
+		}
+		proposals[i].Homonyms = homonyms[normalized]
 	}
 
 	slices.SortStableFunc(proposals, func(a, b Proposal) int {
@@ -138,6 +163,7 @@ type builder struct {
 	prefixes []storage.WordDetails
 	suffixes []storage.WordDetails
 	roots    map[string]storage.WordDetails // by normalized form
+	conRoots map[string]storage.WordDetails // by normalized form
 
 	// taken holds the normalized con words, by kind, generated ones included
 	taken map[string]map[string]bool
@@ -150,6 +176,28 @@ func (b *builder) take(kind, con string) {
 		b.taken[kind] = make(map[string]bool)
 	}
 	b.taken[kind][con] = true
+}
+
+// homonyms returns the source words translated by the con root normalized,
+// none when it already translates wordID.
+func (b *builder) homonyms(wordID int, normalized string) ([]string, error) {
+	root, ok := b.conRoots[normalized]
+	if !ok {
+		return nil, nil
+	}
+	translations, err := b.storage.ListTranslations(root.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	sources := make([]string, 0, len(translations))
+	for _, translation := range translations {
+		if translation.Word.ID == wordID {
+			return nil, nil
+		}
+		sources = append(sources, translation.Word.Text)
+	}
+	return sources, nil
 }
 
 // segment lists every decomposition of the word into known prefixes, a root

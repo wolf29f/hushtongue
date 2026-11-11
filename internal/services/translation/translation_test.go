@@ -52,6 +52,34 @@ func TestPropose(t *testing.T) {
 		if got := cons(proposals); !slices.Equal(got, want) {
 			t.Errorf("cons = %v, want %v", got, want)
 		}
+		for _, proposal := range proposals {
+			if len(proposal.Homonyms) > 0 {
+				t.Errorf("homonyms of %+v = %v, want none for the word's own translation", proposal.Parts, proposal.Homonyms)
+			}
+		}
+	})
+
+	t.Run("flags a compound whose concatenation translates another word", func(t *testing.T) {
+		dao := newTestDAO(t)
+		word := addWord(t, dao, "source", "remer", "root")
+		re := addWord(t, dao, "source", "re", "prefix")
+		mer := addWord(t, dao, "source", "mer", "root")
+		link(t, dao, re, addWord(t, dao, "con", "ki", "prefix"))
+		link(t, dao, mer, addWord(t, dao, "con", "ailo", "root"))
+		link(t, dao, mer, addWord(t, dao, "con", "vora", "root"))
+		link(t, dao, addWord(t, dao, "source", "fleur", "root"), addWord(t, dao, "con", "kiailo", "root"))
+
+		proposals := propose(t, dao, word)
+
+		for _, proposal := range proposals {
+			var want []string
+			if cons([]translation.Proposal{proposal})[0] == "ki-ailo" {
+				want = []string{"fleur"}
+			}
+			if !slices.Equal(proposal.Homonyms, want) {
+				t.Errorf("homonyms of %+v = %v, want %v", proposal.Parts, proposal.Homonyms, want)
+			}
+		}
 	})
 
 	t.Run("stacks affixes and keeps roots long enough", func(t *testing.T) {
