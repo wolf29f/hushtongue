@@ -36,17 +36,24 @@ func Load(path string) (*DAO, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite", path)
+	// Both apps can use the file at the same time: a write waits for the
+	// other app's instead of failing, and WAL lets reads go on meanwhile.
+	// Transactions take the write lock upfront, as a deferred one can't wait
+	// when upgrading from read to write.
+	db, err := sql.Open("sqlite", path+"?"+
+		"_pragma=busy_timeout(5000)&"+
+		"_pragma=journal_mode(WAL)&"+
+		"_pragma=foreign_keys(1)&"+
+		"_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}
 
-	// SQLite doesn't support concurrent writers anyway; pinning the pool to a
-	// single connection lets a one-time PRAGMA below apply to every query
-	// instead of only whichever connection happened to run it.
+	// SQLite doesn't support concurrent writers anyway
 	db.SetMaxOpenConns(1)
 
-	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+	// sql.Open doesn't connect, ping to fail here on a bad file
+	if err := db.Ping(); err != nil {
 		if err := db.Close(); err != nil {
 			slog.Warn("Failed to close SQLite database after error", "error", err)
 		}

@@ -91,6 +91,15 @@ func applyMigration(db *sql.DB, version int, migration string) (err error) {
 		}
 	}()
 
+	// The other app may have applied it since migrate read the version
+	var current int
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&current); err != nil {
+		return err
+	}
+	if current >= version {
+		return nil
+	}
+
 	if _, err := tx.ExecContext(ctx, migration); err != nil {
 		return err
 	}

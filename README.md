@@ -118,7 +118,7 @@ Each app stores its dictionary in a single SQLite file, and its logs next to it:
 | macOS | `~/Library/Application Support/hushtongue/hushtongue.db` | `~/Library/Application Support/hushtongue/app.log` |
 | Windows | `%LOCALAPPDATA%\hushtongue\hushtongue.db` | `%LOCALAPPDATA%\hushtongue\app.log` |
 
-Back up or move a dictionary by copying that file. `hushtongue-gm` and `hushtongue-player` use the same path: on the same computer, they share the same dictionary.
+Back up or move a dictionary by copying that file, with both apps closed: while they run, recent changes may still be in the `hushtongue.db-wal` file next to it. `hushtongue-gm` and `hushtongue-player` use the same path: on the same computer, they share the same dictionary and can run at the same time.
 
 ## Running from source
 
