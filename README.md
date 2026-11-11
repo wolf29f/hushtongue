@@ -50,7 +50,7 @@ Both apps default to the language the user knows the least: the source language 
 
 - Every decomposition of the source word into known prefixes, a root and known suffixes is listed (`anti-voiture-ette`), the whole word as root included.
 - Each decomposition is combined with the translations of each part, one proposal per combination: complete existing translations first, then by number of translated parts, pure generation last. Existing parts are green, generated ones red.
-- A part without translation gets a generated conlang word: open syllables, soft consonants, 2-3 syllables for a root and 1 for an affix. Generation is deterministic — a given source word always gives the same result — unless that result is already taken by a conlang word of the same kind, in which case a variant is used.
+- A part without translation gets a generated conlang word: open syllables, soft consonants, 2-3 syllables for a root and 1 for an affix, sometimes 2. Generation is deterministic — a given source word always gives the same result — unless that result is already taken by a conlang word of the same kind, in which case a variant is used.
 - Applying a proposal creates the missing words and links. With several parts, the source word is also linked to the concatenated conlang word, stored as a root.
 
 ## Design

@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"errors"
 	"hash/fnv"
 	"strconv"
 )
@@ -14,8 +15,8 @@ var (
 )
 
 // Kind distinguishes the kind of word to generate, which constrains its
-// shape: roots are full words (2-3 syllables), affixes are short (1
-// syllable) so they stay light once attached to a root.
+// shape: roots are full words (2-3 syllables), affixes are short (mostly 1
+// syllable, sometimes 2) so they stay light once attached to a root.
 type Kind int
 
 const (
@@ -23,6 +24,13 @@ const (
 	KindPrefix
 	KindSuffix
 )
+
+// twoSyllableAffixPercent is the share of affixes with 2 syllables, which
+// keeps the affix space from running out after a few dozen affixes.
+const twoSyllableAffixPercent = 20
+
+// ErrExhausted is returned by Generate when no free word was found.
+var ErrExhausted = errors.New("no free word left to generate")
 
 // hashSeed computes a stable 32-bit hash for a given string (FNV-1a,
 // stdlib, no homemade implementation to maintain).
@@ -56,11 +64,12 @@ func (s *splitmix32) intn(n int) int {
 
 // buildFromSeed builds a word from a seed, in a shape that depends on kind:
 //   - root:   2-3 syllables, CV/V, same behavior as before
-//   - prefix: 1 syllable, always ends on a vowel (attaches cleanly in
-//     front of a root that starts with a consonant)
-//   - suffix: 1 syllable, always starts on a consonant (attaches cleanly
-//     behind a root that ends on a vowel — generated roots always end on
-//     a vowel under the current rules)
+//   - prefix: 1 syllable, 2 for twoSyllableAffixPercent of them, always ends
+//     on a vowel (attaches cleanly in front of a root that starts with a
+//     consonant)
+//   - suffix: same length as a prefix, always starts on a consonant
+//     (attaches cleanly behind a root that ends on a vowel — generated
+//     roots always end on a vowel under the current rules)
 //
 // In every case: ~85% of syllables start with a consonant (forced for a
 // suffix's first syllable), never two identical vowels in a row, never a
@@ -68,9 +77,15 @@ func (s *splitmix32) intn(n int) int {
 func buildFromSeed(seed uint32, kind Kind) string {
 	rng := newSplitmix32(seed)
 
-	syllableCount := 2 + rng.intn(2) // 2 or 3, root default
+	// A single draw for every kind, so that roots and the first syllable of
+	// affixes stay what they were when affixes always had 1 syllable
+	lengthDraw := rng.next()
+	syllableCount := 2 + int(lengthDraw%2) // 2 or 3, root default
 	if kind == KindPrefix || kind == KindSuffix {
 		syllableCount = 1
+		if lengthDraw%100 < twoSyllableAffixPercent {
+			syllableCount = 2
+		}
 	}
 
 	var word []byte
@@ -101,24 +116,22 @@ func buildFromSeed(seed uint32, kind Kind) string {
 // Generate produces a word for the given source key and kind, deterministic
 // and unique with respect to exists. On collision (exists returns true),
 // the seed is re-derived from "key_1", "key_2", etc. — always
-// deterministic, never a true random draw.
+// deterministic, never a true random draw. It returns ErrExhausted when
+// every attempt is taken.
 //
 // exists should be scoped by kind by the caller (e.g. check only against
 // other prefixes when generating a prefix), so a root can't accidentally
 // collide with an unrelated affix.
-func Generate(sourceKey string, kind Kind, exists func(word string) bool) string {
-	var word string
+func Generate(sourceKey string, kind Kind, exists func(word string) bool) (string, error) {
 	for attempt := range 50 {
 		seedInput := sourceKey
 		if attempt > 0 {
 			seedInput = sourceKey + "_" + strconv.Itoa(attempt)
 		}
-		word = buildFromSeed(hashSeed(seedInput), kind)
+		word := buildFromSeed(hashSeed(seedInput), kind)
 		if !exists(word) {
-			return word
+			return word, nil
 		}
 	}
-	// Word space exhausted (shouldn't happen before several thousand
-	// entries): return the last attempt rather than panicking.
-	return word
+	return "", ErrExhausted
 }

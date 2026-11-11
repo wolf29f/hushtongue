@@ -253,24 +253,31 @@ func (b *builder) options(s section) ([]storage.TranslationPart, error) {
 	}
 
 	part := s.part
-	part.Con = b.generate(s.normalized, part.Kind)
+	con, err := b.generate(s.normalized, part.Kind)
+	if err != nil {
+		return nil, err
+	}
+	part.Con = con
 	return []storage.TranslationPart{part}, nil
 }
 
 // generate returns the con word generated for the normalized source, always
 // the same one for a given source, and never one taken by another word.
-func (b *builder) generate(normalized, kind string) string {
+func (b *builder) generate(normalized, kind string) (string, error) {
 	key := kind + "/" + normalized
 	if con, ok := b.generated[key]; ok {
-		return con
+		return con, nil
 	}
 
-	con := generator.Generate(normalized, generatorKind(kind), func(word string) bool {
+	con, err := generator.Generate(normalized, generatorKind(kind), func(word string) bool {
 		return b.taken[kind][word]
 	})
+	if err != nil {
+		return "", err
+	}
 	b.take(kind, con)
 	b.generated[key] = con
-	return con
+	return con, nil
 }
 
 func generatorKind(kind string) generator.Kind {
