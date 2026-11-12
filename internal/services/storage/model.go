@@ -36,6 +36,14 @@ type TranslationPart struct {
 	Con      string
 }
 
+// TranslationLink is a translation link between a source word and a con
+// word.
+type TranslationLink struct {
+	SourceID int
+	ConID    int
+	Origin   string // manual or generated
+}
+
 // Translation is a translation link, seen from one of its two words: Word
 // is the word on the other side.
 type Translation struct {

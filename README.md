@@ -53,6 +53,11 @@ Both apps default to the language the user knows the least: the source language 
 - A part without translation gets a generated conlang word: open syllables, soft consonants, 2-3 syllables for a root and 1 for an affix, sometimes 2. Generation is deterministic — a given source word always gives the same result — unless that result is already taken by a conlang word of the same kind, in which case a variant is used.
 - Applying a proposal creates the missing words and links. With several parts, the source word is also linked to the concatenated conlang word, stored as a root. When that root already translates other source words, the proposal is flagged as their homonym; applying it anyway creates the homonym.
 
+### Export
+
+- The home menu's « Exporter le dictionnaire » writes the whole dictionary to a JSON file, to import it into hushtongue v2.
+- The path defaults to `hushtongue-export-<date>.json` on the desktop (the home directory when there is none) and can be edited; `~` is expanded. An existing file is only replaced after a confirmation, and a missing folder is reported rather than created.
+
 ## Design
 
 - Go, [Bubble Tea](https://charm.land) for the TUI. A single engine (`internal/tui`) is shared by both apps: the `gm` build tag sets `config.IsForGM`, which gates the GM-only features. Word kinds and generation share that one flag, since generating words without being able to set their kind makes no sense.

@@ -7,6 +7,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services"
 	"github.com/wolf29f/hushtongue/internal/tui"
 	"github.com/wolf29f/hushtongue/internal/tui/dictionary"
+	"github.com/wolf29f/hushtongue/internal/tui/dictionaryexport"
 	"github.com/wolf29f/hushtongue/internal/tui/translate"
 )
 
@@ -46,6 +47,12 @@ func NewModel(services *services.Services) Model {
 				Label: "📘 Dictionnaire",
 				Cmd: func() tea.Msg {
 					return tui.PushPage(dictionary.NewModel(services))()
+				},
+			},
+			{
+				Label: "💾 Exporter le dictionnaire",
+				Cmd: func() tea.Msg {
+					return tui.PushPage(dictionaryexport.NewModel(services))()
 				},
 			},
 			{

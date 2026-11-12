@@ -53,19 +53,19 @@ type candidate struct {
 	trigramCount int // number of distinct trigrams of normalized
 }
 
-// Reader is the part of storage a lexicon is loaded from.
-type Reader interface {
+// Dictionary is the part of storage a lexicon is loaded from.
+type Dictionary interface {
 	ListWordDetails(language string) ([]storage.WordDetails, error)
 	ListTranslationsByLanguage(language string) (map[int][]storage.Translation, error)
 }
 
-// Load builds the snapshot of language from r.
-func Load(r Reader, language string) (*Lexicon, error) {
-	words, err := r.ListWordDetails(language)
+// Load builds the snapshot of language from d.
+func Load(d Dictionary, language string) (*Lexicon, error) {
+	words, err := d.ListWordDetails(language)
 	if err != nil {
 		return nil, err
 	}
-	translations, err := r.ListTranslationsByLanguage(language)
+	translations, err := d.ListTranslationsByLanguage(language)
 	if err != nil {
 		return nil, err
 	}

@@ -304,6 +304,32 @@ func (dao *DAO) ListTranslations(wordID int) ([]storage.Translation, error) {
 	return translations, nil
 }
 
+// ListTranslationLinks lists every translation link, in insertion order.
+func (dao *DAO) ListTranslationLinks() ([]storage.TranslationLink, error) {
+	rows, err := dao.DB.Query("SELECT source_word_id, con_word_id, source FROM translations ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("Failed to close rows", "error", err)
+		}
+	}()
+
+	links := make([]storage.TranslationLink, 0)
+	for rows.Next() {
+		var link storage.TranslationLink
+		if err := rows.Scan(&link.SourceID, &link.ConID, &link.Origin); err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return links, nil
+}
+
 // ListTranslationsByLanguage lists the translation links of every word of
 // language, keyed by word id, in insertion order.
 func (dao *DAO) ListTranslationsByLanguage(language string) (map[int][]storage.Translation, error) {
