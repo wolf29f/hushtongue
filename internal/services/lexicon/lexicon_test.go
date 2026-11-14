@@ -1,14 +1,21 @@
 package lexicon_test
 
 import (
-	"path/filepath"
+	"context"
+	"os"
 	"slices"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wolf29f/hushtongue/internal/pgtest"
 	"github.com/wolf29f/hushtongue/internal/services/lexicon"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
-	"github.com/wolf29f/hushtongue/internal/services/storage/sqlite"
+	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(pgtest.Run(m))
+}
 
 func TestLookup(t *testing.T) {
 	t.Run("tells translated, untranslated and unknown words apart", func(t *testing.T) {
@@ -117,9 +124,9 @@ func TestComplete(t *testing.T) {
 	})
 }
 
-func load(t *testing.T, dao *sqlite.DAO, language string) *lexicon.Lexicon {
+func load(t *testing.T, dao *testDB, language string) *lexicon.Lexicon {
 	t.Helper()
-	l, err := lexicon.Load(dao, language)
+	l, err := lexicon.Load(context.Background(), dao.store, dao.user, language)
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
 	}
@@ -142,45 +149,37 @@ func wordTexts(words []storage.Word) []string {
 	return out
 }
 
-func newTestDAO(t *testing.T) *sqlite.DAO {
-	t.Helper()
-	dao, err := sqlite.Load(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("Load() failed: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := dao.Close(); err != nil {
-			t.Errorf("Close() failed: %v", err)
-		}
-	})
-	if err := dao.Init(); err != nil {
-		t.Fatalf("Init() failed: %v", err)
-	}
-	return dao
+type testDB struct {
+	store *postgres.Store
+	pool  *pgxpool.Pool
+	user  int
 }
 
-func addWord(t *testing.T, dao *sqlite.DAO, lang, text, kind string) int {
+func newTestDAO(t *testing.T) *testDB {
 	t.Helper()
-	if err := dao.AddWord(lang, text); err != nil {
+	pool := pgtest.New(t)
+	return &testDB{store: postgres.New(pool), pool: pool, user: pgtest.NewUser(t, pool)}
+}
+
+func addWord(t *testing.T, dao *testDB, lang, text, kind string) int {
+	t.Helper()
+	word, err := dao.store.AddWord(context.Background(), dao.user, lang, text)
+	if err != nil {
 		t.Fatalf("adding word %q: %v", text, err)
 	}
-	var id int
-	if err := dao.DB.QueryRow(`SELECT MAX(id) FROM words`).Scan(&id); err != nil {
-		t.Fatalf("reading word id: %v", err)
-	}
 	if kind != storage.KindRoot {
-		if _, err := dao.ChangeWordKind(id, kind); err != nil {
+		if _, err := dao.store.ChangeWordKind(context.Background(), dao.user, word.ID, kind); err != nil {
 			t.Fatalf("changing kind of %q: %v", text, err)
 		}
 	}
-	return id
+	return word.ID
 }
 
-func link(t *testing.T, dao *sqlite.DAO, sourceID, conID int) {
+func link(t *testing.T, dao *testDB, sourceID, conID int) {
 	t.Helper()
-	if _, err := dao.DB.Exec(
-		`INSERT INTO translations (source_word_id, con_word_id) VALUES (?, ?)`,
-		sourceID, conID,
+	if _, err := dao.pool.Exec(context.Background(),
+		`INSERT INTO translations (user_id, source_word_id, con_word_id) VALUES ($1, $2, $3)`,
+		dao.user, sourceID, conID,
 	); err != nil {
 		t.Fatalf("inserting translation: %v", err)
 	}

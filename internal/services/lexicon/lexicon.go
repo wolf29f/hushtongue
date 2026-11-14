@@ -2,6 +2,7 @@ package lexicon
 
 import (
 	"cmp"
+	"context"
 	"slices"
 	"strings"
 	"unicode"
@@ -55,17 +56,17 @@ type candidate struct {
 
 // Dictionary is the part of storage a lexicon is loaded from.
 type Dictionary interface {
-	ListWordDetails(language string) ([]storage.WordDetails, error)
-	ListTranslationsByLanguage(language string) (map[int][]storage.Translation, error)
+	ListWordDetails(ctx context.Context, userID int, language string) ([]storage.WordDetails, error)
+	ListTranslationsByLanguage(ctx context.Context, userID int, language string) (map[int][]storage.Translation, error)
 }
 
-// Load builds the snapshot of language from d.
-func Load(d Dictionary, language string) (*Lexicon, error) {
-	words, err := d.ListWordDetails(language)
+// Load builds the snapshot of language from the dictionary of userID in d.
+func Load(ctx context.Context, d Dictionary, userID int, language string) (*Lexicon, error) {
+	words, err := d.ListWordDetails(ctx, userID, language)
 	if err != nil {
 		return nil, err
 	}
-	translations, err := d.ListTranslationsByLanguage(language)
+	translations, err := d.ListTranslationsByLanguage(ctx, userID, language)
 	if err != nil {
 		return nil, err
 	}

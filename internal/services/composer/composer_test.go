@@ -1,14 +1,21 @@
-package translation_test
+package composer_test
 
 import (
-	"path/filepath"
+	"context"
+	"os"
 	"slices"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wolf29f/hushtongue/internal/pgtest"
+	"github.com/wolf29f/hushtongue/internal/services/composer"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
-	"github.com/wolf29f/hushtongue/internal/services/storage/sqlite"
-	"github.com/wolf29f/hushtongue/internal/services/translation"
+	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(pgtest.Run(m))
+}
 
 func TestPropose(t *testing.T) {
 	t.Run("decomposes on known affixes and keeps the user's text", func(t *testing.T) {
@@ -73,7 +80,7 @@ func TestPropose(t *testing.T) {
 
 		for _, proposal := range proposals {
 			var want []string
-			if cons([]translation.Proposal{proposal})[0] == "ki-ailo" {
+			if cons([]composer.Proposal{proposal})[0] == "ki-ailo" {
 				want = []string{"fleur"}
 			}
 			if !slices.Equal(proposal.Homonyms, want) {
@@ -150,14 +157,14 @@ func TestApply(t *testing.T) {
 		word := addWord(t, dao, "source", "Refaîte", "root")
 		re := addWord(t, dao, "source", "re", "prefix")
 		link(t, dao, re, addWord(t, dao, "con", "ki", "prefix"))
-		service := translation.New(dao)
+		service := composer.New(dao.store)
 
 		proposal := propose(t, dao, word)[0]
-		if err := service.Apply(word, proposal); err != nil {
+		if err := service.Apply(context.Background(), dao.user, word, proposal); err != nil {
 			t.Fatalf("Apply() failed: %v", err)
 		}
 
-		translations, err := dao.ListTranslations(word)
+		translations, err := dao.store.ListTranslations(context.Background(), dao.user, word)
 		if err != nil {
 			t.Fatalf("ListTranslations() failed: %v", err)
 		}
@@ -167,16 +174,16 @@ func TestApply(t *testing.T) {
 	})
 }
 
-func propose(t *testing.T, dao *sqlite.DAO, wordID int) []translation.Proposal {
+func propose(t *testing.T, dao *testDB, wordID int) []composer.Proposal {
 	t.Helper()
-	proposals, err := translation.New(dao).Propose(wordID)
+	proposals, err := composer.New(dao.store).Propose(context.Background(), dao.user, wordID)
 	if err != nil {
 		t.Fatalf("Propose() failed: %v", err)
 	}
 	return proposals
 }
 
-func sources(proposals []translation.Proposal) []string {
+func sources(proposals []composer.Proposal) []string {
 	got := make([]string, len(proposals))
 	for i, proposal := range proposals {
 		for j, part := range proposal.Parts {
@@ -189,7 +196,7 @@ func sources(proposals []translation.Proposal) []string {
 	return got
 }
 
-func cons(proposals []translation.Proposal) []string {
+func cons(proposals []composer.Proposal) []string {
 	got := make([]string, len(proposals))
 	for i, proposal := range proposals {
 		for j, part := range proposal.Parts {
@@ -202,45 +209,37 @@ func cons(proposals []translation.Proposal) []string {
 	return got
 }
 
-func newTestDAO(t *testing.T) *sqlite.DAO {
-	t.Helper()
-	dao, err := sqlite.Load(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("Load() failed: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := dao.Close(); err != nil {
-			t.Errorf("Close() failed: %v", err)
-		}
-	})
-	if err := dao.Init(); err != nil {
-		t.Fatalf("Init() failed: %v", err)
-	}
-	return dao
+type testDB struct {
+	store *postgres.Store
+	pool  *pgxpool.Pool
+	user  int
 }
 
-func addWord(t *testing.T, dao *sqlite.DAO, lang, text, kind string) int {
+func newTestDAO(t *testing.T) *testDB {
 	t.Helper()
-	if err := dao.AddWord(lang, text); err != nil {
+	pool := pgtest.New(t)
+	return &testDB{store: postgres.New(pool), pool: pool, user: pgtest.NewUser(t, pool)}
+}
+
+func addWord(t *testing.T, dao *testDB, lang, text, kind string) int {
+	t.Helper()
+	word, err := dao.store.AddWord(context.Background(), dao.user, lang, text)
+	if err != nil {
 		t.Fatalf("adding word %q: %v", text, err)
 	}
-	var id int
-	if err := dao.DB.QueryRow(`SELECT MAX(id) FROM words`).Scan(&id); err != nil {
-		t.Fatalf("reading word id: %v", err)
-	}
 	if kind != storage.KindRoot {
-		if _, err := dao.ChangeWordKind(id, kind); err != nil {
+		if _, err := dao.store.ChangeWordKind(context.Background(), dao.user, word.ID, kind); err != nil {
 			t.Fatalf("changing kind of %q: %v", text, err)
 		}
 	}
-	return id
+	return word.ID
 }
 
-func link(t *testing.T, dao *sqlite.DAO, sourceID, conID int) {
+func link(t *testing.T, dao *testDB, sourceID, conID int) {
 	t.Helper()
-	if _, err := dao.DB.Exec(
-		`INSERT INTO translations (source_word_id, con_word_id) VALUES (?, ?)`,
-		sourceID, conID,
+	if _, err := dao.pool.Exec(context.Background(),
+		`INSERT INTO translations (user_id, source_word_id, con_word_id) VALUES ($1, $2, $3)`,
+		dao.user, sourceID, conID,
 	); err != nil {
 		t.Fatalf("inserting translation: %v", err)
 	}

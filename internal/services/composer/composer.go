@@ -1,7 +1,11 @@
-package translation
+// Package composer proposes translations of a source word, composed from its
+// decompositions into known affixes and a root: the existing translations of
+// each part, or a generated word for the parts without one.
+package composer
 
 import (
 	"cmp"
+	"context"
 	"math"
 	"slices"
 	"strings"
@@ -58,22 +62,23 @@ func New(storage storage.Storage) *Service {
 
 // Propose lists the ways to translate the source word wordID, best first.
 // Roots are decomposed into known affixes and a root, affixes are not.
-func (s *Service) Propose(wordID int) ([]Proposal, error) {
-	word, err := s.storage.GetWord(wordID)
+func (s *Service) Propose(ctx context.Context, userID, wordID int) ([]Proposal, error) {
+	word, err := s.storage.GetWord(ctx, userID, wordID)
 	if err != nil {
 		return nil, err
 	}
-	sources, err := s.storage.ListWordDetails(storage.LangSource)
+	sources, err := s.storage.ListWordDetails(ctx, userID, storage.LangSource)
 	if err != nil {
 		return nil, err
 	}
-	cons, err := s.storage.ListWordDetails(storage.LangCon)
+	cons, err := s.storage.ListWordDetails(ctx, userID, storage.LangCon)
 	if err != nil {
 		return nil, err
 	}
 
 	b := builder{
 		storage:   s.storage,
+		userID:    userID,
 		roots:     make(map[string]storage.WordDetails),
 		conRoots:  make(map[string]storage.WordDetails),
 		taken:     make(map[string]map[string]bool),
@@ -103,7 +108,7 @@ func (s *Service) Propose(wordID int) ([]Proposal, error) {
 
 	var proposals []Proposal
 	for _, segmentation := range segmentations {
-		translated, err := b.translate(segmentation)
+		translated, err := b.translate(ctx, segmentation)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +126,7 @@ func (s *Service) Propose(wordID int) ([]Proposal, error) {
 		}
 		normalized := storage.Normalize(concatenated.String())
 		if _, ok := homonyms[normalized]; !ok {
-			if homonyms[normalized], err = b.homonyms(word.ID, normalized); err != nil {
+			if homonyms[normalized], err = b.homonyms(ctx, word.ID, normalized); err != nil {
 				return nil, err
 			}
 		}
@@ -135,8 +140,8 @@ func (s *Service) Propose(wordID int) ([]Proposal, error) {
 }
 
 // Apply stores the proposal as a translation of the source word wordID.
-func (s *Service) Apply(wordID int, proposal Proposal) error {
-	return s.storage.SaveGeneratedTranslation(wordID, proposal.Parts)
+func (s *Service) Apply(ctx context.Context, userID, wordID int, proposal Proposal) error {
+	return s.storage.SaveGeneratedTranslation(ctx, userID, wordID, proposal.Parts)
 }
 
 // section is a part of the source word, with the normalized form its
@@ -159,6 +164,7 @@ func known(word storage.WordDetails) section {
 
 type builder struct {
 	storage storage.Storage
+	userID  int
 
 	prefixes []storage.WordDetails
 	suffixes []storage.WordDetails
@@ -180,12 +186,12 @@ func (b *builder) take(kind, con string) {
 
 // homonyms returns the source words translated by the con root normalized,
 // none when it already translates wordID.
-func (b *builder) homonyms(wordID int, normalized string) ([]string, error) {
+func (b *builder) homonyms(ctx context.Context, wordID int, normalized string) ([]string, error) {
 	root, ok := b.conRoots[normalized]
 	if !ok {
 		return nil, nil
 	}
-	translations, err := b.storage.ListTranslations(root.ID)
+	translations, err := b.storage.ListTranslations(ctx, b.userID, root.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -263,10 +269,10 @@ func (b *builder) root(word storage.WordDetails, start, end int) section {
 }
 
 // translate returns a proposal per combination of the sections' translations.
-func (b *builder) translate(sections []section) ([]Proposal, error) {
+func (b *builder) translate(ctx context.Context, sections []section) ([]Proposal, error) {
 	proposals := []Proposal{{}}
 	for _, s := range sections {
-		options, err := b.options(s)
+		options, err := b.options(ctx, s)
 		if err != nil {
 			return nil, err
 		}
@@ -283,9 +289,9 @@ func (b *builder) translate(sections []section) ([]Proposal, error) {
 }
 
 // options returns the section's existing translations, or a generated one.
-func (b *builder) options(s section) ([]storage.TranslationPart, error) {
+func (b *builder) options(ctx context.Context, s section) ([]storage.TranslationPart, error) {
 	if s.part.SourceID != 0 {
-		translations, err := b.storage.ListTranslations(s.part.SourceID)
+		translations, err := b.storage.ListTranslations(ctx, b.userID, s.part.SourceID)
 		if err != nil {
 			return nil, err
 		}

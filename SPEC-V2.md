@@ -50,8 +50,8 @@ Hors périmètre : interface en anglais, partage de textes entre utilisateurs (l
 
 ## Isolation entre utilisateurs
 
-- L'utilisateur est un paramètre explicite de chaque appel : `storage.Storage` (`GetWord(userID, id)`, `DeleteTranslation(userID, id)`, `MergeWords(userID, fromID, intoID)`…), `lexicon.Load(r, userID, lang)`, `translation.Propose(userID, wordID)`, etc. Le serveur le prend dans la session.
-- Toute requête SQL filtre par `user_id`, y compris celles par id : un id d'un autre utilisateur est traité comme inexistant.
+- L'utilisateur est un paramètre explicite de chaque appel, après le `context.Context` : `storage.Storage` (`GetWord(ctx, userID, id)`, `DeleteTranslation(ctx, userID, id)`, `MergeWords(ctx, userID, fromID, intoID)`…), `lexicon.Load(ctx, d, userID, lang)`, `composer.Propose(ctx, userID, wordID)`, etc. Le serveur le prend dans la session.
+- Toute requête SQL filtre par `user_id`, y compris celles par id : un id d'un autre utilisateur est traité comme inexistant (`storage.ErrNotFound`, comme un id qui n'existe pas).
 - Tests requis : pour chaque méthode prenant un id, l'utilisateur A ne peut ni lire ni modifier un mot, une traduction ou un texte de B.
 
 ## Textes mémorisés
@@ -144,7 +144,7 @@ hushtongue/
 ├── internal/
 │   ├── config/             # variables d'env (remplace le build tag gm)
 │   ├── server/             # HTTP : routes, handlers, auth, sessions, middlewares
-│   └── services/           # métier : generator, lexicon, translation inchangés
+│   └── services/           # métier : generator, lexicon, composer
 │       └── storage/
 │           ├── storage.go
 │           └── postgres/   # remplace sqlite/, migrations embarquées
@@ -215,7 +215,7 @@ hushtongue/
    1. Nettoyage : retrait de la TUI, du build tag `gm` et de `.goreleaser.yaml`. Une branche `v1` part du tag `v1.1.0` pour d'éventuels correctifs.
    2. Config et serveur minimal : `internal/config` lit et valide les variables d'environnement (erreur claire au démarrage si une variable requise manque), `cmd/server` lance `net/http` avec arrêt propre sur SIGTERM, logs JSON sur la sortie standard, format d'erreur et limites HTTP, `GET /api/health/live`, sous-commande `healthcheck`, workflow de CI.
    3. Postgres : pool `pgx`, migrations goose avec verrou Postgres, `GET /api/health/ready`, schéma initial complet (`users`, `sessions`, `words`, `translations`, `texts`). Les tests lancent un Postgres jetable avec testcontainers : un conteneur par paquet (`TestMain`), chaque test dans son propre schéma. `go test -short` les ignore ; sans `-short`, Docker absent fait échouer les tests avec un message clair plutôt que de les ignorer, pour qu'un run complet ne passe jamais au vert sans les avoir exécutés.
-   4. Storage Postgres : l'interface `storage.Storage` prend l'utilisateur en paramètre, implémentation Postgres portée depuis `storage/sqlite` (requêtes et tests), tests d'isolation entre utilisateurs. `storage/sqlite` est supprimé dans ce même commit : le passage de l'utilisateur en paramètre le casse, et le porter n'aurait aucun intérêt. `lexicon` et `translation` passent l'utilisateur, leurs tests sont adaptés.
+   4. Storage Postgres : l'interface `storage.Storage` prend l'utilisateur en paramètre, implémentation Postgres portée depuis `storage/sqlite` (requêtes et tests), tests d'isolation entre utilisateurs. `storage/sqlite` est supprimé dans ce même commit : le passage de l'utilisateur en paramètre le casse, et le porter n'aurait aucun intérêt. `lexicon` et `translation` (renommé `composer`) passent l'utilisateur, leurs tests sont adaptés.
    5. Auth : sessions (création, expiration glissante, suppression, purge), login MJ avec limite de tentatives, middleware (`401`, `403`, contrôle du `Content-Type`), `GET /api/me`, `POST /api/logout`.
    6. Joueurs : création, liste, suppression, régénération du lien (qui ferme les sessions du joueur), `POST /api/login/link`.
 3. Socle front :

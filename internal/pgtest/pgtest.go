@@ -115,3 +115,15 @@ func exec(t *testing.T, sql string) {
 		t.Fatalf("%s: %v", sql, err)
 	}
 }
+
+// NewUser adds a player to pool's schema and returns its id.
+func NewUser(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	var id int
+	if err := pool.QueryRow(context.Background(),
+		"INSERT INTO users (name, role) VALUES ('player_' || (SELECT count(*) FROM users), 'player') RETURNING id",
+	).Scan(&id); err != nil {
+		t.Fatalf("adding user: %v", err)
+	}
+	return id
+}
