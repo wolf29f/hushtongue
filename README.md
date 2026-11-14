@@ -63,6 +63,10 @@ The server reads its configuration from the environment and refuses to start, li
 
 It logs JSON to the standard output and, on SIGINT or SIGTERM, lets the requests in progress finish before stopping. At startup, it applies the pending database migrations. `GET /api/health/live` answers as soon as it runs, `GET /api/health/ready` only when the database answers too; `server healthcheck` exits with 0 when the server listening on `HUSHTONGUE_ADDR` is ready, 1 otherwise.
 
+At startup, it also creates the GM's account, or renames it after `HUSHTONGUE_GM_USERNAME`, keeping its dictionary. The GM logs in with `HUSHTONGUE_GM_USERNAME` and `HUSHTONGUE_GM_PASSWORD`, at most 5 attempts per minute and per IP. Behind a reverse proxy, the client's IP is the last entry of `X-Forwarded-For`: the server must not be reachable without the proxy, which would let a client pick its IP. The session cookie is `Secure` unless `HUSHTONGUE_PUBLIC_URL` starts with `http://`, which local development over http needs (`HUSHTONGUE_PUBLIC_URL=http://localhost:8080`).
+
+The server runs as a single instance: the login attempts are counted in memory, and so will be the cache of each user's lexicon. Running several instances would need the attempts in the database and the lexicon reloaded on each request.
+
 ## Tests
 
 ```sh

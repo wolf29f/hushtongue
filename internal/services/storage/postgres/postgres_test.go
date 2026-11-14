@@ -101,8 +101,7 @@ func execErr(pool *pgxpool.Pool, sql string) error {
 
 func assertViolation(t *testing.T, err error, code string) {
 	t.Helper()
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != code {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); !ok || pgErr.Code != code {
 		t.Errorf("error = %v, want SQLSTATE %s", err, code)
 	}
 }

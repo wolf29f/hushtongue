@@ -1,5 +1,7 @@
 package storage
 
+import "time"
+
 // Word languages.
 const (
 	LangSource = "source"
@@ -41,4 +43,22 @@ type TranslationPart struct {
 type Translation struct {
 	ID   int
 	Word Word
+}
+
+// User roles.
+const (
+	RoleGM     = "gm"
+	RolePlayer = "player"
+)
+
+type User struct {
+	ID   int
+	Name string
+	Role string // gm or player
+}
+
+// Session is a logged in session of User, expiring in ExpiresIn.
+type Session struct {
+	User      User
+	ExpiresIn time.Duration
 }

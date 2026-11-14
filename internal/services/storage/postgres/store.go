@@ -36,8 +36,8 @@ type querier interface {
 }
 
 func isViolation(err error, code string) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == code
+	pgErr, ok := errors.AsType[*pgconn.PgError](err)
+	return ok && pgErr.Code == code
 }
 
 // notFoundIfNoRows reports a missing row as storage.ErrNotFound.
@@ -58,4 +58,9 @@ func notFoundIfNoneAffected(tag pgconn.CommandTag, err error) error {
 		return storage.ErrNotFound
 	}
 	return nil
+}
+
+// Ping checks that the database answers.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
 }

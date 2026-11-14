@@ -27,8 +27,7 @@ func TestAddWord(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 
 		_, err := f.store.AddWord(ctx, f.user, storage.LangSource, "Mèr")
-		var exists *storage.WordExistsError
-		if !errors.As(err, &exists) || exists.ExistingID != mer {
+		if exists, ok := errors.AsType[*storage.WordExistsError](err); !ok || exists.ExistingID != mer {
 			t.Errorf("AddWord() error = %v, want a WordExistsError for %d", err, mer)
 		}
 	})
@@ -85,8 +84,7 @@ func TestSaveWord(t *testing.T) {
 		ciel := f.word(t, "source", "ciel", "root")
 
 		_, err := f.store.SaveWord(ctx, f.user, storage.WordDetails{ID: ciel, Language: "source", Text: "Mèr", Kind: "root"})
-		var exists *storage.WordExistsError
-		if !errors.As(err, &exists) || exists.ExistingID != mer {
+		if exists, ok := errors.AsType[*storage.WordExistsError](err); !ok || exists.ExistingID != mer {
 			t.Errorf("SaveWord() error = %v, want a WordExistsError for %d", err, mer)
 		}
 	})
@@ -240,8 +238,7 @@ func TestChangeWordKind(t *testing.T) {
 		f.translation(t, mer, ailo)
 
 		_, err := f.store.ChangeWordKind(ctx, f.user, mer, "prefix")
-		var exists *storage.WordExistsError
-		if !errors.As(err, &exists) || exists.ExistingID != merPrefix {
+		if exists, ok := errors.AsType[*storage.WordExistsError](err); !ok || exists.ExistingID != merPrefix {
 			t.Fatalf("ChangeWordKind() error = %v, want a WordExistsError for %d", err, merPrefix)
 		}
 

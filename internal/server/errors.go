@@ -1,7 +1,8 @@
 package server
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
+	"errors"
 	"log/slog"
 	"net/http"
 )
@@ -11,9 +12,18 @@ import (
 type errorCode string
 
 const (
-	codeNotFound            errorCode = "not_found"
-	codeMethodNotAllowed    errorCode = "method_not_allowed"
-	codeDatabaseUnavailable errorCode = "database_unavailable"
+	codeInvalidRequest       errorCode = "invalid_request"
+	codeUnauthenticated      errorCode = "unauthenticated"
+	codeInvalidCredentials   errorCode = "invalid_credentials"
+	codeForbidden            errorCode = "forbidden"
+	codeCrossOrigin          errorCode = "cross_origin"
+	codeNotFound             errorCode = "not_found"
+	codeMethodNotAllowed     errorCode = "method_not_allowed"
+	codeRequestTooLarge      errorCode = "request_too_large"
+	codeUnsupportedMediaType errorCode = "unsupported_media_type"
+	codeTooManyAttempts      errorCode = "too_many_attempts"
+	codeInternal             errorCode = "internal"
+	codeDatabaseUnavailable  errorCode = "database_unavailable"
 )
 
 // apiError is the body of every error response: Code is for the front to
@@ -26,7 +36,7 @@ type apiError struct {
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(body); err != nil {
+	if err := json.MarshalWrite(w, body); err != nil {
 		slog.Error("unable to write response", "error", err)
 	}
 }
@@ -35,18 +45,24 @@ func writeError(w http.ResponseWriter, status int, code errorCode, message strin
 	writeJSON(w, status, apiError{Code: code, Message: message})
 }
 
-// jsonFallback writes the mux's own 404 and 405 responses in the API error
-// format.
-func jsonFallback(mux *http.ServeMux) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Calling the returned handler directly would skip the path values
-		// (r.PathValue) that only mux.ServeHTTP sets
-		if _, pattern := mux.Handler(r); pattern != "" {
-			mux.ServeHTTP(w, r)
-			return
+// writeInternalError logs err and answers with a 500.
+func (s *Server) writeInternalError(w http.ResponseWriter, r *http.Request, err error) {
+	s.logger.Error("Request failed", "method", r.Method, "path", r.URL.Path, "error", err)
+	writeError(w, http.StatusInternalServerError, codeInternal, "Erreur interne.")
+}
+
+// readJSON decodes the request body into v. It answers with an error and
+// returns false when the body is invalid.
+func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	if err := json.UnmarshalRead(r.Body, v); err != nil {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			writeError(w, http.StatusRequestEntityTooLarge, codeRequestTooLarge, "Requête trop volumineuse.")
+			return false
 		}
-		mux.ServeHTTP(&fallbackWriter{ResponseWriter: w}, r)
-	})
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "Requête invalide.")
+		return false
+	}
+	return true
 }
 
 // fallbackWriter replaces the plain text body of an error with a JSON one.

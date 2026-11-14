@@ -15,6 +15,7 @@ import (
 
 	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/server"
+	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
 )
 
@@ -58,7 +59,18 @@ func run(logger *slog.Logger) error {
 	}
 	defer db.Close()
 
-	srv := server.New(db, logger).HTTPServer(cfg.Addr)
+	store := postgres.New(db)
+	if err := store.SetGM(ctx, cfg.GMUsername); err != nil {
+		if errors.Is(err, storage.ErrNameTaken) {
+			return fmt.Errorf("invalid configuration: HUSHTONGUE_GM_USERNAME %q is a player's name", cfg.GMUsername)
+		}
+		return fmt.Errorf("setting up the GM: %w", err)
+	}
+
+	app := server.New(cfg, store, logger)
+	go app.PurgeSessions(ctx)
+
+	srv := app.HTTPServer(cfg.Addr)
 	served := make(chan error, 1)
 	go func() {
 		logger.Info("server listening", "addr", cfg.Addr, "version", config.Version)

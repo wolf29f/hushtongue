@@ -34,7 +34,10 @@ Hors périmètre : interface en anglais, partage de textes entre utilisateurs (l
 - Lien magique : réutilisable, valable jusqu'à sa régénération. Il pointe vers la page du front `/login/{token}`, qui appelle `POST /api/login/link` avec le token ; le serveur crée la session et pose le cookie, puis le front retire le token de l'URL (`history.replaceState`). Un `GET` qui créerait la session serait déclenché par les aperçus de liens des messageries (Discord, WhatsApp, Signal…).
 - Le token du lien est stocké haché : le lien n'est affiché qu'une fois, à sa création ou régénération. Le MJ qui l'a perdu le régénère.
 - Régénérer le lien d'un joueur invalide l'ancien lien et ferme toutes les sessions de ce joueur. Supprimer un joueur supprime son dictionnaire, ses textes et ses sessions, après confirmation.
-- Protection CSRF : `SameSite=Lax` plus, sur toute requête qui modifie, un `Content-Type: application/json` exigé (un formulaire d'un autre site ne peut pas l'envoyer sans preflight).
+- Protection CSRF, sur toute requête qui modifie (méthode autre que `GET`, `HEAD` et `OPTIONS`) :
+  - `SameSite=Lax` : le navigateur ne joint pas le cookie à une requête venant d'un autre site.
+  - `http.CrossOriginProtection` de la bibliothèque standard : refuse (`403`) une requête dont `Sec-Fetch-Site` n'est pas `same-origin`, ou, sans cet en-tête, dont l'`Origin` diffère du `Host`.
+  - `Content-Type: application/json` exigé (`415`), même sans corps : un formulaire d'un autre site ne peut pas l'envoyer sans preflight CORS.
 - Déconnexion : supprime la session courante.
 
 ## Modèle de données (Postgres)
@@ -93,7 +96,8 @@ JSON sous `/api`, authentifiée par le cookie de session ; `401` sans session, `
 - Limites : timeouts de lecture, d'écriture et d'inactivité sur le serveur HTTP ; corps de requête limité à 10 Mo sur toutes les routes, la taille dont l'import a besoin.
 
 
-- Auth : `POST /api/login`, `POST /api/logout`, `GET /api/me` (nom, rôle, libellés des langues), `POST /api/login/link` (token du lien magique).
+- Auth : `POST /api/login`, `POST /api/logout`, `GET /api/me` (nom, rôle), `POST /api/login/link` (token du lien magique).
+- Réglages : `GET /api/settings`, sans session pour que la page de connexion puisse les afficher : libellés des langues, lus dans `HUSHTONGUE_SOURCE_LANG_LABEL` et `HUSHTONGUE_CON_LANG_LABEL`.
 - Joueurs (MJ) : `GET/POST /api/players`, `POST /api/players/{id}/link` (régénère, renvoie le lien une fois), `DELETE /api/players/{id}`.
 - Mots : `GET /api/words?lang=`, `POST /api/words`, `GET/PATCH/DELETE /api/words/{id}`, `POST /api/words/{id}/merge`, `PUT /api/words/{id}/kind` (MJ).
 - Traductions : `POST /api/words/{id}/translations`, `PATCH /api/translations/{id}` (note), `DELETE /api/translations/{id}`.
@@ -166,7 +170,7 @@ hushtongue/
 - Le serveur sert les fichiers statiques et renvoie `index.html` pour toute route hors `/api`.
 - En dev : `go run ./cmd/server` et `npm run dev` dans `web/`. Vite transmet `/api` au serveur Go ; le cookie reste sur la même origine, sans CORS.
 - Pas d'outillage monorepo (un seul paquet JS), pas de génération de types depuis Go pour l'instant.
-- Serveur HTTP : bibliothèque standard (`net/http`, routage par motifs), `pgx/v5` pour Postgres.
+- Serveur HTTP : bibliothèque standard (`net/http`, routage par motifs, `encoding/json/v2`, actif par défaut depuis Go 1.27), `pgx/v5` pour Postgres.
 - Organisation de `internal/server` : un seul paquet, un fichier par fonctionnalité (`health.go`, `auth.go`, `players.go`, `words.go`, `translations.go`, `generation.go`, `translate.go`, `texts.go`, `import.go`) avec son fichier de test, plus `server.go`, `errors.go` et `middleware.go`.
   - Une struct `Server` porte les dépendances (config, storage, services, logger) ; les handlers sont ses méthodes, sans variable globale.
   - Une seule table des routes dans `server.go`, avec le middleware de chaque route (`requireSession`, `requireGM`).

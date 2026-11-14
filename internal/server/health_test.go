@@ -8,13 +8,15 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/pgtest"
+	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
 )
 
 func TestHandleReady(t *testing.T) {
 	t.Run("ready when the database answers", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		New(pgtest.New(t), slog.Default()).routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/health/ready", nil))
+		New(config.Config{}, postgres.New(pgtest.New(t)), slog.Default()).routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/health/ready", nil))
 
 		if w.Code != http.StatusOK {
 			t.Errorf("status = %d, want 200", w.Code)
@@ -30,7 +32,7 @@ func TestHandleReady(t *testing.T) {
 		defer db.Close()
 
 		w := httptest.NewRecorder()
-		New(db, slog.Default()).routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/health/ready", nil))
+		New(config.Config{}, postgres.New(db), slog.Default()).routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/health/ready", nil))
 
 		if w.Code != http.StatusServiceUnavailable {
 			t.Errorf("status = %d, want 503", w.Code)
