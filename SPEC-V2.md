@@ -81,7 +81,7 @@ Toutes les fonctionnalités de la v1 sont reprises :
 JSON sous `/api`, authentifiée par le cookie de session ; `401` sans session, `403` pour une fonction MJ appelée par un joueur, `404` pour un id d'un autre utilisateur.
 
 - Erreurs : `{"error": "<code stable>", "message": "<texte en français>"}`. Le front affiche le message et réagit au code pour les cas particuliers (homonyme, fusion…).
-- Limites : timeouts de lecture, d'écriture et d'inactivité sur le serveur HTTP ; corps de requête limité à 1 Mo, 10 Mo pour l'import.
+- Limites : timeouts de lecture, d'écriture et d'inactivité sur le serveur HTTP ; corps de requête limité à 10 Mo sur toutes les routes, la taille dont l'import a besoin.
 
 
 - Auth : `POST /api/login`, `POST /api/logout`, `GET /api/me` (nom, rôle, libellés des langues), `POST /api/login/link` (token du lien magique).
@@ -158,6 +158,12 @@ hushtongue/
 - En dev : `go run ./cmd/server` et `npm run dev` dans `web/`. Vite transmet `/api` au serveur Go ; le cookie reste sur la même origine, sans CORS.
 - Pas d'outillage monorepo (un seul paquet JS), pas de génération de types depuis Go pour l'instant.
 - Serveur HTTP : bibliothèque standard (`net/http`, routage par motifs), `pgx/v5` pour Postgres.
+- Organisation de `internal/server` : un seul paquet, un fichier par fonctionnalité (`health.go`, `auth.go`, `players.go`, `words.go`, `translations.go`, `generation.go`, `translate.go`, `texts.go`, `import.go`) avec son fichier de test, plus `server.go`, `errors.go` et `middleware.go`.
+  - Une struct `Server` porte les dépendances (config, storage, services, logger) ; les handlers sont ses méthodes, sans variable globale.
+  - Une seule table des routes dans `server.go`, avec le middleware de chaque route (`requireSession`, `requireGM`).
+  - Handlers fins : lire la requête, appeler le service, écrire la réponse ; la logique métier reste dans `internal/services`.
+  - Les services renvoient des erreurs sentinelles (`storage.ErrNotFound`…), converties en code HTTP et `apiError` par une seule fonction de `errors.go`.
+  - Si le paquet grossit, les helpers et middlewares passent dans un paquet commun exporté et chaque fonctionnalité devient un sous-paquet.
 - Dockerfile en trois étapes : build Node du front, build Go, image finale minimale avec le seul binaire. Le HTTPS est assuré par le reverse proxy.
 - Santé, sans authentification :
   - `GET /api/health/live` : `200` dès que le serveur répond, sans regarder la base. Un redémarrage n'y changerait rien quand Postgres est indisponible.

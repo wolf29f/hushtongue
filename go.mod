@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	github.com/adrg/xdg v0.5.3
+	github.com/caarlos0/env/v11 v11.4.2
 	golang.org/x/text v0.42.0
 	modernc.org/sqlite v1.58.0
 )

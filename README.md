@@ -19,14 +19,14 @@ Two roles, one engine:
 
 Each player's notebook evolves independently and is never synced with the GM's dictionary or other players' notebooks — that's the point: everyone learns the conlang imperfectly, at their own pace, just like a real second language picked up through play.
 
-|                                                  | GM  | Player |
-| ------------------------------------------------ | --- | ------ |
-| Translate, in both directions                    | ✅  | ✅     |
-| Browse and edit the dictionary                   | ✅  | ✅     |
-| Add and delete translations by hand              | ✅  | ✅     |
-| Copy the translation to the clipboard            | ✅  | ✅     |
-| Word kinds (root/prefix/suffix)                  | ✅  | ❌     |
-| Translation generation                           | ✅  | ❌     |
+|                                       | GM  | Player |
+| ------------------------------------- | --- | ------ |
+| Translate, in both directions         | ✅   | ✅      |
+| Browse and edit the dictionary        | ✅   | ✅      |
+| Add and delete translations by hand   | ✅   | ✅      |
+| Copy the translation to the clipboard | ✅   | ✅      |
+| Word kinds (root/prefix/suffix)       | ✅   | ❌      |
+| Translation generation                | ✅   | ❌      |
 
 Both roles default to the language the user knows the least: the source language for the GM, the conlang for players. This applies to the translation direction and to the dictionary's word list.
 
@@ -42,3 +42,23 @@ Both roles default to the language the user knows the least: the source language
 - Words are deduplicated on their normalized form (lowercased, accents stripped), per language and kind.
 - Several translations of a word are shown in insertion order, without ranking.
 - Autocomplete uses an in-memory trigram index built from the user's dictionary: at a TTRPG's scale (a few thousand words), it isn't worth a database-side index.
+
+## Running from source
+
+```sh
+DATABASE_URL=postgres://… HUSHTONGUE_GM_PASSWORD=… go run ./cmd/server
+```
+
+The server reads its configuration from the environment and refuses to start, listing every missing or invalid variable, when it is incomplete:
+
+| Variable                       | Required | Default                   |
+| ------------------------------ | -------- | ------------------------- |
+| `DATABASE_URL`                 | yes      |                           |
+| `HUSHTONGUE_GM_PASSWORD`       | yes      |                           |
+| `HUSHTONGUE_GM_USERNAME`       | no       | `mj`                      |
+| `HUSHTONGUE_PUBLIC_URL`        | no       | deduced from each request |
+| `HUSHTONGUE_ADDR`              | no       | `:8080`                   |
+| `HUSHTONGUE_SOURCE_LANG_LABEL` | no       | `Français`                |
+| `HUSHTONGUE_CON_LANG_LABEL`    | no       | `conLang`                 |
+
+It logs JSON to the standard output and, on SIGINT or SIGTERM, lets the requests in progress finish before stopping. `GET /api/health/live` answers as soon as it runs; `server healthcheck` exits with 0 when the server listening on `HUSHTONGUE_ADDR` answers it, 1 otherwise.
