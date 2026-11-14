@@ -10,10 +10,10 @@ import (
 const healthcheckTimeout = 3 * time.Second
 
 // healthcheck fails unless the server listening on addr reports itself
-// healthy.
+// ready, its database included.
 func healthcheck(addr string) error {
 	client := http.Client{Timeout: healthcheckTimeout}
-	resp, err := client.Get("http://" + localAddr(addr) + "/api/health/live")
+	resp, err := client.Get("http://" + localAddr(addr) + "/api/health/ready")
 	if err != nil {
 		return err
 	}

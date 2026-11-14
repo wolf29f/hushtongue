@@ -28,7 +28,7 @@ Hors périmètre : interface en anglais, partage de textes entre utilisateurs (l
 
 ## Authentification
 
-- Session : cookie `HttpOnly`, `SameSite=Lax`, contenant un token aléatoire ; la base n'en stocke que le hash (`sessions`). Expiration glissante : 30 jours pour le MJ, 1 an pour un joueur. Les sessions expirées sont purgées au démarrage puis une fois par jour.
+- Session : cookie `HttpOnly`, `SameSite=Lax`, contenant un token aléatoire ; la base n'en stocke que le hash (`sessions`). Expiration glissante : 30 jours pour le MJ, 1 an pour un joueur. Les sessions expirées sont purgées au démarrage puis une fois par jour. Chaque requête hache le token du cookie en SHA-256 et cherche la session par ce hash, jointe à son utilisateur, en une requête sur la clé primaire ; pas de cache, pour que la déconnexion et la régénération d'un lien prennent effet immédiatement. L'expiration n'est repoussée qu'au plus une fois par jour, pour ne pas écrire en base à chaque requête.
 - Le cookie est `Secure` sauf quand `HUSHTONGUE_PUBLIC_URL` est en `http://` : Safari refuse un cookie `Secure` sur `http://localhost`, ce qui casserait le dev.
 - Login MJ : formulaire nom + mot de passe, limité à quelques tentatives par minute et par IP. Derrière Traefik, l'IP du client est la dernière entrée de `X-Forwarded-For`, celle ajoutée par Traefik, que le client ne peut pas falsifier ; le conteneur ne doit donc pas être exposé directement.
 - Lien magique : réutilisable, valable jusqu'à sa régénération. Il pointe vers la page du front `/login/{token}`, qui appelle `POST /api/login/link` avec le token ; le serveur crée la session et pose le cookie, puis le front retire le token de l'URL (`history.replaceState`). Un `GET` qui créerait la session serait déclenché par les aperçus de liens des messageries (Discord, WhatsApp, Signal…).
@@ -66,6 +66,15 @@ Hors périmètre : interface en anglais, partage de textes entre utilisateurs (l
 - Une note privée optionnelle sur un lien de traduction, éditable depuis la fiche du mot et visible dans la page de traduction (survol ou appui long sur la traduction choisie).
 - Une note optionnelle sur un texte mémorisé, éditable depuis la page de traduction et affichée dans la liste des textes.
 
+## Mots et symboles
+
+- Le texte saisi est découpé côté serveur en jetons : des mots et des symboles. Chaque signe de ponctuation ou symbole (`?`, `!`, `,`, `«`, `…`…) est un jeton à part : `viens?` donne `viens` et `?`.
+- L'apostrophe, le trait d'union et l'underscore restent dans le mot quand ils sont entre deux lettres ou chiffres : `aujourd'hui`, `peut-être`, `mot_composé` sont un seul jeton.
+- Les espaces d'origine sont gardés entre les jetons, pour reconstruire le texte traduit avec la même mise en forme.
+- Un symbole s'ajoute au dictionnaire comme un mot (`?` en langue source, traduit par un mot de la conlang qui marque l'interrogation) et est cherché tel quel, sans retrait de la ponctuation. Le MJ peut en générer la traduction comme pour un mot.
+- Un symbole absent du dictionnaire est recopié tel quel et affiché en neutre, pas en rouge. « Mémoriser les nouveaux mots » ignore les symboles ; on en ajoute un volontairement, depuis le dictionnaire ou avec le `+` de la page de traduction.
+- Un symbole traduit par un mot est séparé par des espaces comme un mot (`tu viens?` donne `kaso na`). Un mot traduit par un symbole est collé au jeton précédent (`kaso na` donne `viens?`). Un symbole non traduit garde son espacement d'origine. L'espace française avant `?`, `!`, `:` et `;` pourra devenir une option plus tard.
+
 ## Reprise de la v1
 
 Toutes les fonctionnalités de la v1 sont reprises :
@@ -73,7 +82,7 @@ Toutes les fonctionnalités de la v1 sont reprises :
 - Traduction : choix de direction en gardant la saisie, coloration des mots (vert/orange/rouge), complétion (5 suggestions et `…`), choix d'une traduction par mot, ajout (`+`) et suppression d'un lien depuis la page, mémorisation des mots inconnus, copie du texte traduit, collage d'un texte.
 - Dictionnaire : liste par langue avec filtre, ajout d'un mot, fiche du mot (traductions, ajout par mot existant ou nouveau, suppression d'un lien, renommage avec proposition de fusion, suppression du mot).
 - MJ uniquement : changement de type de mot (avec suppression des liens après confirmation), génération de traduction avec décompositions, propositions classées et marquage des homonymes.
-- La saisie mot par mot de la TUI devient une saisie libre : le texte est découpé en mots côté serveur, avec les mêmes `Clean`/`Normalize` qu'en v1.
+- La saisie mot par mot de la TUI devient une saisie libre : le texte est découpé en jetons côté serveur (voir « Mots et symboles »), normalisés avec le même `Normalize` qu'en v1. `Clean`, qui retirait la ponctuation autour des mots, disparaît avec le découpage en jetons.
 - Le débordement en hauteur de la page de traduction, limitation connue de la v1, disparaît avec une page web qui défile.
 
 ## API
@@ -93,7 +102,7 @@ JSON sous `/api`, authentifiée par le cookie de session ; `401` sans session, `
 - Textes : `GET/POST /api/texts`, `GET/PUT/DELETE /api/texts/{id}`.
 - Import : `POST /api/import`, corps `{"file": "<fichier d'export en base64>"}`. Le fichier reste un document opaque, séparé de la requête qui le transporte : le serveur le décode puis le lit avec sa propre validation (`format`, `version`), indépendamment du schéma de la requête, et l'enveloppe peut recevoir des options plus tard. Le front l'envoie en JSON, pas en multipart, comme toute requête qui modifie (voir CSRF).
 
-`Clean`, `Normalize`, la recherche et la complétion restent uniquement côté Go : le front n'en a pas de copie, pour qu'ils ne divergent pas. Le lexique de l'utilisateur est mis en cache en mémoire côté serveur et invalidé à chaque écriture de cet utilisateur.
+Le découpage en jetons, `Normalize`, la recherche et la complétion restent uniquement côté Go : le front n'en a pas de copie, pour qu'ils ne divergent pas. Le lexique de l'utilisateur est mis en cache en mémoire côté serveur et invalidé à chaque écriture de cet utilisateur.
 
 ## Export v1.1.0 et import v2
 
@@ -192,6 +201,12 @@ hushtongue/
 - Libellés des langues stockés en base : remplacés par des variables d'environnement, l'instance n'ayant qu'une conlang.
 - Jonction préfixe-racine : inchangée, indépendante de la v2.
 - Nettoyage : `translations.source` est affichée (voir modèle de données) ; le bloc de spec obsolète de `wordview.go` disparaît avec la TUI.
+
+## Pistes pour plus tard
+
+- Recherche dans les textes mémorisés par les mots qu'ils contiennent : recherche plein texte Postgres (`tsvector` et index GIN) ou `pg_trgm`, selon le besoin.
+- Titre optionnel sur un texte mémorisé.
+- Espace française avant `?`, `!`, `:` et `;` dans le texte traduit.
 
 ## Étapes
 

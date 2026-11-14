@@ -11,8 +11,9 @@ import (
 type errorCode string
 
 const (
-	codeNotFound         errorCode = "not_found"
-	codeMethodNotAllowed errorCode = "method_not_allowed"
+	codeNotFound            errorCode = "not_found"
+	codeMethodNotAllowed    errorCode = "method_not_allowed"
+	codeDatabaseUnavailable errorCode = "database_unavailable"
 )
 
 // apiError is the body of every error response: Code is for the front to

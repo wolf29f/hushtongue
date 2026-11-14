@@ -15,6 +15,7 @@ import (
 
 	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/server"
+	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -51,7 +52,13 @@ func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv := server.New(cfg.Addr, logger)
+	db, err := postgres.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer db.Close()
+
+	srv := server.New(db, logger).HTTPServer(cfg.Addr)
 	served := make(chan error, 1)
 	go func() {
 		logger.Info("server listening", "addr", cfg.Addr, "version", config.Version)

@@ -61,4 +61,18 @@ The server reads its configuration from the environment and refuses to start, li
 | `HUSHTONGUE_SOURCE_LANG_LABEL` | no       | `Français`                |
 | `HUSHTONGUE_CON_LANG_LABEL`    | no       | `conLang`                 |
 
-It logs JSON to the standard output and, on SIGINT or SIGTERM, lets the requests in progress finish before stopping. `GET /api/health/live` answers as soon as it runs; `server healthcheck` exits with 0 when the server listening on `HUSHTONGUE_ADDR` answers it, 1 otherwise.
+It logs JSON to the standard output and, on SIGINT or SIGTERM, lets the requests in progress finish before stopping. At startup, it applies the pending database migrations. `GET /api/health/live` answers as soon as it runs, `GET /api/health/ready` only when the database answers too; `server healthcheck` exits with 0 when the server listening on `HUSHTONGUE_ADDR` is ready, 1 otherwise.
+
+## Tests
+
+```sh
+go test ./...         # everything, the Postgres tests in throwaway containers
+go test -short ./...  # without Docker, the Postgres tests skipped
+```
+
+The Postgres tests start one container per package with [testcontainers](https://golang.testcontainers.org), each test in its own schema. Without `-short`, they fail when Docker isn't running rather than being skipped. With [Colima](https://github.com/abiosoft/colima), point testcontainers at its socket:
+
+```sh
+export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```

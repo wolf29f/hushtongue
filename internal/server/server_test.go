@@ -2,11 +2,19 @@ package server
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/wolf29f/hushtongue/internal/pgtest"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(pgtest.Run(m))
+}
 
 func TestRoutes(t *testing.T) {
 	tests := []struct {
@@ -25,7 +33,7 @@ func TestRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
+			New(nil, slog.Default()).routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
 
 			if w.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)

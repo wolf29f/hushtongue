@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -18,27 +20,33 @@ const (
 	maxBodySize = 10 << 20 // 10 MB
 )
 
-// New returns the HTTP server listening on addr.
-func New(addr string, logger *slog.Logger) *http.Server {
+// Server holds the dependencies of the handlers.
+type Server struct {
+	db     *pgxpool.Pool
+	logger *slog.Logger
+}
+
+// New creates the server on top of the database db.
+func New(db *pgxpool.Pool, logger *slog.Logger) *Server {
+	return &Server{db: db, logger: logger}
+}
+
+// HTTPServer returns the HTTP server serving the API on addr.
+func (s *Server) HTTPServer(addr string) *http.Server {
 	return &http.Server{
 		Addr:              addr,
-		Handler:           routes(),
+		Handler:           s.routes(),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
-		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		ErrorLog:          slog.NewLogLogger(s.logger.Handler(), slog.LevelError),
 	}
 }
 
-func routes() http.Handler {
+func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health/live", handleLive)
+	mux.HandleFunc("GET /api/health/live", s.handleLive)
+	mux.HandleFunc("GET /api/health/ready", s.handleReady)
 	return http.MaxBytesHandler(jsonFallback(mux), maxBodySize)
-}
-
-// handleLive answers as soon as the server runs, whatever the state of the
-// database: restarting the server wouldn't fix it.
-func handleLive(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
