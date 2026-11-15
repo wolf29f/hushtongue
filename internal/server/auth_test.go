@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wolf29f/hushtongue/internal/pgtest"
 )
 
 const gmLogin = `{"name": "mj", "password": "secret"}`
@@ -199,40 +198,40 @@ func TestSessionExtension(t *testing.T) {
 		}
 	})
 
-	tests := []struct {
-		name     string
-		cookie   func(t *testing.T, s *Server, pool *pgxpool.Pool) *http.Cookie
-		lifetime time.Duration
-	}{
-		{"GM", func(t *testing.T, s *Server, _ *pgxpool.Pool) *http.Cookie {
-			return login(t, s)
-		}, gmSessionLifetime},
-		{"player", func(t *testing.T, s *Server, pool *pgxpool.Pool) *http.Cookie {
-			cookie := &http.Cookie{Name: sessionCookie, Value: "player-token"}
-			if err := s.store.CreateSession(context.Background(), hashToken(cookie.Value), pgtest.NewUser(t, pool), time.Hour); err != nil {
-				t.Fatalf("CreateSession() failed: %v", err)
-			}
-			return cookie
-		}, playerSessionLifetime},
-	}
-	for _, tt := range tests {
-		t.Run("extends a "+tt.name+" session after a day", func(t *testing.T) {
-			s, pool := newTestServer(t, testConfig)
-			cookie := tt.cookie(t, s, pool)
-			setExpiresIn(t, pool, cookie, tt.lifetime-25*time.Hour)
+	t.Run("extends a GM session after a day", func(t *testing.T) {
+		s, pool := newTestServer(t, testConfig)
+		cookie := login(t, s)
+		setExpiresIn(t, pool, cookie, gmSessionLifetime-25*time.Hour)
 
-			w := serve(s, http.MethodGet, "/api/me", "", cookie)
+		w := serve(s, http.MethodGet, "/api/me", "", cookie)
 
-			renewed := sessionCookieOf(w)
-			if w.Code != http.StatusOK || renewed == nil || renewed.Value != cookie.Value ||
-				renewed.MaxAge != int(tt.lifetime/time.Second) {
-				t.Errorf("me = %d with cookie %+v, want 200 renewing the cookie for %v", w.Code, renewed, tt.lifetime)
-			}
-			if remaining := expiresIn(t, pool, cookie); remaining < tt.lifetime-time.Minute {
-				t.Errorf("session expires in %v, want %v", remaining, tt.lifetime)
-			}
-		})
-	}
+		renewed := sessionCookieOf(w)
+		if w.Code != http.StatusOK || renewed == nil || renewed.Value != cookie.Value ||
+			renewed.MaxAge != int(gmSessionLifetime/time.Second) {
+			t.Errorf("me = %d with cookie %+v, want 200 renewing the cookie for 30 days", w.Code, renewed)
+		}
+		if remaining := expiresIn(t, pool, cookie); remaining < gmSessionLifetime-time.Minute {
+			t.Errorf("session expires in %v, want 30 days", remaining)
+		}
+	})
+
+	t.Run("extends a player session after a day", func(t *testing.T) {
+		s, pool := newTestServer(t, testConfig)
+		_, link := createPlayer(t, s, login(t, s), "Ana")
+		cookie := sessionCookieOf(linkLogin(t, s, link))
+		setExpiresIn(t, pool, cookie, playerSessionLifetime-25*time.Hour)
+
+		w := serve(s, http.MethodGet, "/api/me", "", cookie)
+
+		renewed := sessionCookieOf(w)
+		if w.Code != http.StatusOK || renewed == nil || renewed.Value != cookie.Value ||
+			renewed.MaxAge != int(playerSessionLifetime/time.Second) {
+			t.Errorf("me = %d with cookie %+v, want 200 renewing the cookie for a year", w.Code, renewed)
+		}
+		if remaining := expiresIn(t, pool, cookie); remaining < playerSessionLifetime-time.Minute {
+			t.Errorf("session expires in %v, want a year", remaining)
+		}
+	})
 }
 
 func TestLogout(t *testing.T) {

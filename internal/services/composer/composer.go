@@ -28,16 +28,6 @@ type Proposal struct {
 	Homonyms []string
 }
 
-func (p Proposal) known() int {
-	count := 0
-	for _, part := range p.Parts {
-		if part.ConID != 0 {
-			count++
-		}
-	}
-	return count
-}
-
 // rank orders the proposals: complete existing translations first, pure
 // generation last, the others by number of known parts.
 func (p Proposal) rank() int {
@@ -47,7 +37,13 @@ func (p Proposal) rank() int {
 		}
 		return math.MinInt
 	}
-	return p.known()
+	count := 0
+	for _, part := range p.Parts {
+		if part.ConID != 0 {
+			count++
+		}
+	}
+	return count
 }
 
 // Service builds and applies translation proposals.

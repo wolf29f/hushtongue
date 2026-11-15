@@ -37,7 +37,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 	if err := run(logger); err != nil {
-		logger.Error("server failed", "error", err)
+		logger.Error("Server failed", "error", err)
 		os.Exit(1)
 	}
 }
@@ -73,7 +73,7 @@ func run(logger *slog.Logger) error {
 	srv := app.HTTPServer(cfg.Addr)
 	served := make(chan error, 1)
 	go func() {
-		logger.Info("server listening", "addr", cfg.Addr, "version", config.Version)
+		logger.Info("Server listening", "addr", cfg.Addr, "version", config.Version)
 		served <- srv.ListenAndServe()
 	}()
 
@@ -83,7 +83,7 @@ func run(logger *slog.Logger) error {
 	case <-ctx.Done():
 	}
 
-	logger.Info("server shutting down")
+	logger.Info("Server shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

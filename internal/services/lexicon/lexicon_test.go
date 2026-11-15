@@ -19,15 +19,15 @@ func TestMain(m *testing.M) {
 
 func TestLookup(t *testing.T) {
 	t.Run("tells translated, untranslated and unknown words apart", func(t *testing.T) {
-		dao := newTestDAO(t)
-		mer := addWord(t, dao, "source", "Mer", "root")
-		addWord(t, dao, "source", "terre", "root")
-		ailo := addWord(t, dao, "con", "ailo", "root")
-		vora := addWord(t, dao, "con", "vora", "root")
-		link(t, dao, mer, ailo)
-		link(t, dao, mer, vora)
+		f := newFixture(t)
+		mer := addWord(t, f, "source", "Mer", "root")
+		addWord(t, f, "source", "terre", "root")
+		ailo := addWord(t, f, "con", "ailo", "root")
+		vora := addWord(t, f, "con", "vora", "root")
+		link(t, f, mer, ailo)
+		link(t, f, mer, vora)
 
-		l := load(t, dao, "source")
+		l := load(t, f, "source")
 
 		entry := l.Lookup("mer")
 		if entry.Status != lexicon.StatusTranslated || entry.Word.ID != mer {
@@ -45,10 +45,10 @@ func TestLookup(t *testing.T) {
 	})
 
 	t.Run("loads the translations of con words", func(t *testing.T) {
-		dao := newTestDAO(t)
-		link(t, dao, addWord(t, dao, "source", "mer", "root"), addWord(t, dao, "con", "ailo", "root"))
+		f := newFixture(t)
+		link(t, f, addWord(t, f, "source", "mer", "root"), addWord(t, f, "con", "ailo", "root"))
 
-		entry := load(t, dao, "con").Lookup("ailo")
+		entry := load(t, f, "con").Lookup("ailo")
 
 		if got, want := translationTexts(entry.Translations), []string{"mer"}; !slices.Equal(got, want) {
 			t.Errorf("translations = %v, want %v", got, want)
@@ -56,10 +56,10 @@ func TestLookup(t *testing.T) {
 	})
 
 	t.Run("ignores case, accents and surrounding punctuation", func(t *testing.T) {
-		dao := newTestDAO(t)
-		ile := addWord(t, dao, "source", "île", "root")
+		f := newFixture(t)
+		ile := addWord(t, f, "source", "île", "root")
 
-		l := load(t, dao, "source")
+		l := load(t, f, "source")
 
 		for _, typed := range []string{"Île", "ile", "ile,", "«île»", "île..."} {
 			if got := l.Lookup(typed).Word.ID; got != ile {
@@ -69,10 +69,10 @@ func TestLookup(t *testing.T) {
 	})
 
 	t.Run("matches roots only", func(t *testing.T) {
-		dao := newTestDAO(t)
-		addWord(t, dao, "source", "anti", "prefix")
+		f := newFixture(t)
+		addWord(t, f, "source", "anti", "prefix")
 
-		if got := load(t, dao, "source").Lookup("anti").Status; got != lexicon.StatusUnknown {
+		if got := load(t, f, "source").Lookup("anti").Status; got != lexicon.StatusUnknown {
 			t.Errorf("Lookup(anti).Status = %v, want unknown", got)
 		}
 	})
@@ -80,12 +80,12 @@ func TestLookup(t *testing.T) {
 
 func TestComplete(t *testing.T) {
 	t.Run("ranks the words beginning with the prefix first", func(t *testing.T) {
-		dao := newTestDAO(t)
+		f := newFixture(t)
 		for _, word := range []string{"montagne", "maison", "mer", "amer", "ciel"} {
-			addWord(t, dao, "source", word, "root")
+			addWord(t, f, "source", word, "root")
 		}
 
-		words, more := load(t, dao, "source").Complete("me", 5)
+		words, more := load(t, f, "source").Complete("me", 5)
 
 		if got := wordTexts(words); len(got) == 0 || got[0] != "mer" {
 			t.Errorf("Complete(me) = %v, want mer first", got)
@@ -99,12 +99,12 @@ func TestComplete(t *testing.T) {
 	})
 
 	t.Run("caps the result and reports the words left out", func(t *testing.T) {
-		dao := newTestDAO(t)
+		f := newFixture(t)
 		for _, word := range []string{"ma", "mai", "maison", "mal", "malle", "mare"} {
-			addWord(t, dao, "source", word, "root")
+			addWord(t, f, "source", word, "root")
 		}
 
-		words, more := load(t, dao, "source").Complete("ma", 5)
+		words, more := load(t, f, "source").Complete("ma", 5)
 
 		if len(words) != 5 || !more {
 			t.Errorf("Complete(ma, 5) = %v, %v, want 5 words and more", wordTexts(words), more)
@@ -115,18 +115,18 @@ func TestComplete(t *testing.T) {
 	})
 
 	t.Run("returns nothing for an empty prefix", func(t *testing.T) {
-		dao := newTestDAO(t)
-		addWord(t, dao, "source", "mer", "root")
+		f := newFixture(t)
+		addWord(t, f, "source", "mer", "root")
 
-		if words, more := load(t, dao, "source").Complete(" ,", 5); len(words) != 0 || more {
+		if words, more := load(t, f, "source").Complete(" ,", 5); len(words) != 0 || more {
 			t.Errorf("Complete() = %v, %v, want nothing", wordTexts(words), more)
 		}
 	})
 }
 
-func load(t *testing.T, dao *testDB, language string) *lexicon.Lexicon {
+func load(t *testing.T, f *fixture, language string) *lexicon.Lexicon {
 	t.Helper()
-	l, err := lexicon.Load(context.Background(), dao.store, dao.user, language)
+	l, err := lexicon.Load(context.Background(), f.store, f.user, language)
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
 	}
@@ -149,37 +149,37 @@ func wordTexts(words []storage.Word) []string {
 	return out
 }
 
-type testDB struct {
+type fixture struct {
 	store *postgres.Store
 	pool  *pgxpool.Pool
 	user  int
 }
 
-func newTestDAO(t *testing.T) *testDB {
+func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	pool := pgtest.New(t)
-	return &testDB{store: postgres.New(pool), pool: pool, user: pgtest.NewUser(t, pool)}
+	return &fixture{store: postgres.New(pool), pool: pool, user: pgtest.NewUser(t, pool)}
 }
 
-func addWord(t *testing.T, dao *testDB, lang, text, kind string) int {
+func addWord(t *testing.T, f *fixture, lang, text, kind string) int {
 	t.Helper()
-	word, err := dao.store.AddWord(context.Background(), dao.user, lang, text)
+	word, err := f.store.AddWord(context.Background(), f.user, lang, text)
 	if err != nil {
 		t.Fatalf("adding word %q: %v", text, err)
 	}
 	if kind != storage.KindRoot {
-		if _, err := dao.store.ChangeWordKind(context.Background(), dao.user, word.ID, kind); err != nil {
+		if _, err := f.store.ChangeWordKind(context.Background(), f.user, word.ID, kind); err != nil {
 			t.Fatalf("changing kind of %q: %v", text, err)
 		}
 	}
 	return word.ID
 }
 
-func link(t *testing.T, dao *testDB, sourceID, conID int) {
+func link(t *testing.T, f *fixture, sourceID, conID int) {
 	t.Helper()
-	if _, err := dao.pool.Exec(context.Background(),
+	if _, err := f.pool.Exec(context.Background(),
 		`INSERT INTO translations (user_id, source_word_id, con_word_id) VALUES ($1, $2, $3)`,
-		dao.user, sourceID, conID,
+		f.user, sourceID, conID,
 	); err != nil {
 		t.Fatalf("inserting translation: %v", err)
 	}

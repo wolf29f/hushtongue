@@ -108,8 +108,8 @@ func TestMergeWords(t *testing.T) {
 		ailo := f.word(t, "con", "ailo", "root")
 		vora := f.word(t, "con", "vora", "root")
 		f.translation(t, mer, ailo, "generated")
-		f.translation(t, ocean, ailo)
-		f.translation(t, ocean, vora)
+		f.translation(t, ocean, ailo, "manual")
+		f.translation(t, ocean, vora, "manual")
 
 		if err := f.store.MergeWords(ctx, f.user, ocean, mer); err != nil {
 			t.Fatalf("MergeWords() failed: %v", err)
@@ -127,7 +127,7 @@ func TestMergeWords(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
 		aylo := f.word(t, "con", "aylo", "root")
-		f.translation(t, mer, aylo)
+		f.translation(t, mer, aylo, "manual")
 
 		if err := f.store.MergeWords(ctx, f.user, aylo, ailo); err != nil {
 			t.Fatalf("MergeWords() failed: %v", err)
@@ -152,7 +152,7 @@ func TestMergeWords(t *testing.T) {
 		f := newFixture(t)
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
-		f.translation(t, mer, ailo)
+		f.translation(t, mer, ailo, "manual")
 
 		if err := f.store.MergeWords(ctx, f.user, mer, mer); err == nil {
 			t.Fatal("MergeWords() succeeded unexpectedly")
@@ -168,8 +168,8 @@ func TestDeleteWord(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
 		ciel := f.word(t, "source", "ciel", "root")
-		f.translation(t, mer, ailo)
-		f.translation(t, ciel, ailo)
+		f.translation(t, mer, ailo, "manual")
+		f.translation(t, ciel, ailo, "manual")
 
 		if err := f.store.DeleteWord(ctx, f.user, mer); err != nil {
 			t.Fatalf("DeleteWord() failed: %v", err)
@@ -203,9 +203,9 @@ func TestChangeWordKind(t *testing.T) {
 		ailo := f.word(t, "con", "ailo", "root")
 		ciel := f.word(t, "source", "ciel", "root")
 		vora := f.word(t, "con", "vora", "root")
-		f.translation(t, mer, ailo)
-		f.translation(t, ciel, ailo)
-		f.translation(t, ciel, vora)
+		f.translation(t, mer, ailo, "manual")
+		f.translation(t, ciel, ailo, "manual")
+		f.translation(t, ciel, vora, "manual")
 
 		word, err := f.store.ChangeWordKind(ctx, f.user, ailo, "prefix")
 		if err != nil {
@@ -235,7 +235,7 @@ func TestChangeWordKind(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		merPrefix := f.word(t, "source", "mer", "prefix")
 		ailo := f.word(t, "con", "ailo", "root")
-		f.translation(t, mer, ailo)
+		f.translation(t, mer, ailo, "manual")
 
 		_, err := f.store.ChangeWordKind(ctx, f.user, mer, "prefix")
 		if exists, ok := errors.AsType[*storage.WordExistsError](err); !ok || exists.ExistingID != merPrefix {

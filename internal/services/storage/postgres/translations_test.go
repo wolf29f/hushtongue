@@ -15,9 +15,9 @@ func TestListTranslations(t *testing.T) {
 		ailo := f.word(t, "con", "ailo", "root")
 		vora := f.word(t, "con", "vora", "root")
 		ciel := f.word(t, "source", "ciel", "root")
-		merVora := f.translation(t, mer, vora)
-		merAilo := f.translation(t, mer, ailo)
-		cielAilo := f.translation(t, ciel, ailo)
+		merVora := f.translation(t, mer, vora, "manual")
+		merAilo := f.translation(t, mer, ailo, "manual")
+		cielAilo := f.translation(t, ciel, ailo, "manual")
 
 		got, err := f.store.ListTranslations(ctx, f.user, mer)
 		if err != nil {
@@ -51,8 +51,8 @@ func TestListTranslationsByLanguage(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
 		vora := f.word(t, "con", "vora", "root")
-		merAilo := f.translation(t, mer, ailo)
-		merVora := f.translation(t, mer, vora)
+		merAilo := f.translation(t, mer, ailo, "manual")
+		merVora := f.translation(t, mer, vora, "manual")
 
 		got, err := f.store.ListTranslationsByLanguage(ctx, f.user, storage.LangCon)
 		if err != nil {
@@ -74,8 +74,8 @@ func TestDeleteTranslation(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
 		ciel := f.word(t, "source", "ciel", "root")
-		merAilo := f.translation(t, mer, ailo)
-		f.translation(t, ciel, ailo)
+		merAilo := f.translation(t, mer, ailo, "manual")
+		f.translation(t, ciel, ailo, "manual")
 
 		if err := f.store.DeleteTranslation(ctx, f.user, merAilo); err != nil {
 			t.Fatalf("DeleteTranslation() failed: %v", err)
@@ -201,7 +201,7 @@ func TestSaveGeneratedTranslation(t *testing.T) {
 		refaite := f.word(t, "source", "Refaîte", "root")
 		re := f.word(t, "source", "re", "prefix")
 		ki := f.word(t, "con", "ki", "prefix")
-		f.translation(t, re, ki)
+		f.translation(t, re, ki, "manual")
 
 		err := f.store.SaveGeneratedTranslation(ctx, f.user, refaite, []storage.TranslationPart{
 			{Kind: "prefix", SourceID: re, Source: "re", ConID: ki, Con: "ki"},
@@ -236,7 +236,7 @@ func TestSaveGeneratedTranslation(t *testing.T) {
 		f := newFixture(t)
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
-		f.translation(t, mer, ailo)
+		f.translation(t, mer, ailo, "manual")
 
 		err := f.store.SaveGeneratedTranslation(ctx, f.user, mer, []storage.TranslationPart{
 			{Kind: "root", SourceID: mer, Source: "mer", Con: "ailo"},

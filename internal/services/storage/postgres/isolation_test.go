@@ -13,7 +13,7 @@ func TestIsolation(t *testing.T) {
 	f := newFixture(t)
 	mer := f.word(t, "source", "mer", "root")
 	ailo := f.word(t, "con", "ailo", "root")
-	merAilo := f.translation(t, mer, ailo)
+	merAilo := f.translation(t, mer, ailo, "manual")
 
 	other := f.otherUser(t)
 	ciel := other.word(t, "source", "ciel", "root")

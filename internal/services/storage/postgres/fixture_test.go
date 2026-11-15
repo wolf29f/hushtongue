@@ -45,17 +45,13 @@ func (f fixture) word(t *testing.T, lang, text, kind string) int {
 	return id
 }
 
-// translation links two words of the user, with origin "manual" unless given.
-func (f fixture) translation(t *testing.T, sourceID, conID int, origin ...string) int {
+// translation links two words of the user.
+func (f fixture) translation(t *testing.T, sourceID, conID int, origin string) int {
 	t.Helper()
-	linkOrigin := "manual"
-	if len(origin) > 0 {
-		linkOrigin = origin[0]
-	}
 	var id int
 	if err := f.pool.QueryRow(ctx,
 		`INSERT INTO translations (user_id, source_word_id, con_word_id, origin) VALUES ($1, $2, $3, $4) RETURNING id`,
-		f.user, sourceID, conID, linkOrigin,
+		f.user, sourceID, conID, origin,
 	).Scan(&id); err != nil {
 		t.Fatalf("inserting translation: %v", err)
 	}

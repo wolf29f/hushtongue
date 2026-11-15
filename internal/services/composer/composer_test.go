@@ -19,13 +19,13 @@ func TestMain(m *testing.M) {
 
 func TestPropose(t *testing.T) {
 	t.Run("decomposes on known affixes and keeps the user's text", func(t *testing.T) {
-		dao := newTestDAO(t)
-		word := addWord(t, dao, "source", "Refaîte", "root")
-		re := addWord(t, dao, "source", "re", "prefix")
-		ki := addWord(t, dao, "con", "ki", "prefix")
-		link(t, dao, re, ki)
+		f := newFixture(t)
+		word := addWord(t, f, "source", "Refaîte", "root")
+		re := addWord(t, f, "source", "re", "prefix")
+		ki := addWord(t, f, "con", "ki", "prefix")
+		link(t, f, re, ki)
 
-		proposals := propose(t, dao, word)
+		proposals := propose(t, f, word)
 
 		if got, want := sources(proposals), []string{"re-faîte", "Refaîte"}; !slices.Equal(got, want) {
 			t.Fatalf("sources = %v, want %v", got, want)
@@ -44,16 +44,16 @@ func TestPropose(t *testing.T) {
 	})
 
 	t.Run("lists the complete translations first, one per combination", func(t *testing.T) {
-		dao := newTestDAO(t)
-		word := addWord(t, dao, "source", "remer", "root")
-		re := addWord(t, dao, "source", "re", "prefix")
-		mer := addWord(t, dao, "source", "mer", "root")
-		link(t, dao, re, addWord(t, dao, "con", "ki", "prefix"))
-		link(t, dao, mer, addWord(t, dao, "con", "ailo", "root"))
-		link(t, dao, mer, addWord(t, dao, "con", "vora", "root"))
-		link(t, dao, word, addWord(t, dao, "con", "kiailo", "root"))
+		f := newFixture(t)
+		word := addWord(t, f, "source", "remer", "root")
+		re := addWord(t, f, "source", "re", "prefix")
+		mer := addWord(t, f, "source", "mer", "root")
+		link(t, f, re, addWord(t, f, "con", "ki", "prefix"))
+		link(t, f, mer, addWord(t, f, "con", "ailo", "root"))
+		link(t, f, mer, addWord(t, f, "con", "vora", "root"))
+		link(t, f, word, addWord(t, f, "con", "kiailo", "root"))
 
-		proposals := propose(t, dao, word)
+		proposals := propose(t, f, word)
 
 		want := []string{"kiailo", "ki-ailo", "ki-vora"}
 		if got := cons(proposals); !slices.Equal(got, want) {
@@ -67,16 +67,16 @@ func TestPropose(t *testing.T) {
 	})
 
 	t.Run("flags a compound whose concatenation translates another word", func(t *testing.T) {
-		dao := newTestDAO(t)
-		word := addWord(t, dao, "source", "remer", "root")
-		re := addWord(t, dao, "source", "re", "prefix")
-		mer := addWord(t, dao, "source", "mer", "root")
-		link(t, dao, re, addWord(t, dao, "con", "ki", "prefix"))
-		link(t, dao, mer, addWord(t, dao, "con", "ailo", "root"))
-		link(t, dao, mer, addWord(t, dao, "con", "vora", "root"))
-		link(t, dao, addWord(t, dao, "source", "fleur", "root"), addWord(t, dao, "con", "kiailo", "root"))
+		f := newFixture(t)
+		word := addWord(t, f, "source", "remer", "root")
+		re := addWord(t, f, "source", "re", "prefix")
+		mer := addWord(t, f, "source", "mer", "root")
+		link(t, f, re, addWord(t, f, "con", "ki", "prefix"))
+		link(t, f, mer, addWord(t, f, "con", "ailo", "root"))
+		link(t, f, mer, addWord(t, f, "con", "vora", "root"))
+		link(t, f, addWord(t, f, "source", "fleur", "root"), addWord(t, f, "con", "kiailo", "root"))
 
-		proposals := propose(t, dao, word)
+		proposals := propose(t, f, word)
 
 		for _, proposal := range proposals {
 			var want []string
@@ -90,14 +90,14 @@ func TestPropose(t *testing.T) {
 	})
 
 	t.Run("stacks affixes and keeps roots long enough", func(t *testing.T) {
-		dao := newTestDAO(t)
-		word := addWord(t, dao, "source", "redéfaire", "root")
-		addWord(t, dao, "source", "re", "prefix")
-		addWord(t, dao, "source", "dé", "prefix")
-		addWord(t, dao, "source", "faire", "prefix")
-		addWord(t, dao, "source", "ire", "suffix")
+		f := newFixture(t)
+		word := addWord(t, f, "source", "redéfaire", "root")
+		addWord(t, f, "source", "re", "prefix")
+		addWord(t, f, "source", "dé", "prefix")
+		addWord(t, f, "source", "faire", "prefix")
+		addWord(t, f, "source", "ire", "suffix")
 
-		proposals := propose(t, dao, word)
+		proposals := propose(t, f, word)
 
 		want := []string{"re-dé-fa-ire", "re-dé-faire", "re-défa-ire", "re-défaire", "redéfa-ire", "redéfaire"}
 		got := sources(proposals)
@@ -108,12 +108,12 @@ func TestPropose(t *testing.T) {
 	})
 
 	t.Run("generates the same word for a section, distinct words otherwise", func(t *testing.T) {
-		dao := newTestDAO(t)
-		word := addWord(t, dao, "source", "remer", "root")
-		addWord(t, dao, "source", "re", "prefix")
-		addWord(t, dao, "source", "er", "suffix")
+		f := newFixture(t)
+		word := addWord(t, f, "source", "remer", "root")
+		addWord(t, f, "source", "re", "prefix")
+		addWord(t, f, "source", "er", "suffix")
 
-		proposals := propose(t, dao, word)
+		proposals := propose(t, f, word)
 
 		generated := make(map[string]string)
 		for _, proposal := range proposals {
@@ -135,11 +135,11 @@ func TestPropose(t *testing.T) {
 	})
 
 	t.Run("doesn't decompose an affix", func(t *testing.T) {
-		dao := newTestDAO(t)
-		word := addWord(t, dao, "source", "remer", "prefix")
-		addWord(t, dao, "source", "re", "prefix")
+		f := newFixture(t)
+		word := addWord(t, f, "source", "remer", "prefix")
+		addWord(t, f, "source", "re", "prefix")
 
-		proposals := propose(t, dao, word)
+		proposals := propose(t, f, word)
 
 		if len(proposals) != 1 || len(proposals[0].Parts) != 1 {
 			t.Fatalf("proposals = %+v, want a single part", proposals)
@@ -153,18 +153,18 @@ func TestPropose(t *testing.T) {
 
 func TestApply(t *testing.T) {
 	t.Run("stores the proposal", func(t *testing.T) {
-		dao := newTestDAO(t)
-		word := addWord(t, dao, "source", "Refaîte", "root")
-		re := addWord(t, dao, "source", "re", "prefix")
-		link(t, dao, re, addWord(t, dao, "con", "ki", "prefix"))
-		service := composer.New(dao.store)
+		f := newFixture(t)
+		word := addWord(t, f, "source", "Refaîte", "root")
+		re := addWord(t, f, "source", "re", "prefix")
+		link(t, f, re, addWord(t, f, "con", "ki", "prefix"))
+		service := composer.New(f.store)
 
-		proposal := propose(t, dao, word)[0]
-		if err := service.Apply(context.Background(), dao.user, word, proposal); err != nil {
+		proposal := propose(t, f, word)[0]
+		if err := service.Apply(context.Background(), f.user, word, proposal); err != nil {
 			t.Fatalf("Apply() failed: %v", err)
 		}
 
-		translations, err := dao.store.ListTranslations(context.Background(), dao.user, word)
+		translations, err := f.store.ListTranslations(context.Background(), f.user, word)
 		if err != nil {
 			t.Fatalf("ListTranslations() failed: %v", err)
 		}
@@ -174,9 +174,9 @@ func TestApply(t *testing.T) {
 	})
 }
 
-func propose(t *testing.T, dao *testDB, wordID int) []composer.Proposal {
+func propose(t *testing.T, f *fixture, wordID int) []composer.Proposal {
 	t.Helper()
-	proposals, err := composer.New(dao.store).Propose(context.Background(), dao.user, wordID)
+	proposals, err := composer.New(f.store).Propose(context.Background(), f.user, wordID)
 	if err != nil {
 		t.Fatalf("Propose() failed: %v", err)
 	}
@@ -209,37 +209,37 @@ func cons(proposals []composer.Proposal) []string {
 	return got
 }
 
-type testDB struct {
+type fixture struct {
 	store *postgres.Store
 	pool  *pgxpool.Pool
 	user  int
 }
 
-func newTestDAO(t *testing.T) *testDB {
+func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	pool := pgtest.New(t)
-	return &testDB{store: postgres.New(pool), pool: pool, user: pgtest.NewUser(t, pool)}
+	return &fixture{store: postgres.New(pool), pool: pool, user: pgtest.NewUser(t, pool)}
 }
 
-func addWord(t *testing.T, dao *testDB, lang, text, kind string) int {
+func addWord(t *testing.T, f *fixture, lang, text, kind string) int {
 	t.Helper()
-	word, err := dao.store.AddWord(context.Background(), dao.user, lang, text)
+	word, err := f.store.AddWord(context.Background(), f.user, lang, text)
 	if err != nil {
 		t.Fatalf("adding word %q: %v", text, err)
 	}
 	if kind != storage.KindRoot {
-		if _, err := dao.store.ChangeWordKind(context.Background(), dao.user, word.ID, kind); err != nil {
+		if _, err := f.store.ChangeWordKind(context.Background(), f.user, word.ID, kind); err != nil {
 			t.Fatalf("changing kind of %q: %v", text, err)
 		}
 	}
 	return word.ID
 }
 
-func link(t *testing.T, dao *testDB, sourceID, conID int) {
+func link(t *testing.T, f *fixture, sourceID, conID int) {
 	t.Helper()
-	if _, err := dao.pool.Exec(context.Background(),
+	if _, err := f.pool.Exec(context.Background(),
 		`INSERT INTO translations (user_id, source_word_id, con_word_id) VALUES ($1, $2, $3)`,
-		dao.user, sourceID, conID,
+		f.user, sourceID, conID,
 	); err != nil {
 		t.Fatalf("inserting translation: %v", err)
 	}

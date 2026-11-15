@@ -32,21 +32,16 @@ const twoSyllableAffixPercent = 20
 // ErrExhausted is returned by Generate when no free word was found.
 var ErrExhausted = errors.New("no free word left to generate")
 
-// hashSeed computes a stable 32-bit hash for a given string (FNV-1a,
-// stdlib, no homemade implementation to maintain).
+// hashSeed returns a stable 32-bit FNV-1a hash of s.
 func hashSeed(s string) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(s))
 	return h.Sum32()
 }
 
-// splitmix32 is a minimal, deterministic PRNG: same seed → same sequence
-// of values, on any machine and any Go version (unlike math/rand, whose
-// cross-version reproducibility guarantees are weaker). Good enough here,
-// this isn't crypto.
+// splitmix32 is a deterministic PRNG, stable across machines and Go
+// versions, unlike math/rand.
 type splitmix32 struct{ state uint32 }
-
-func newSplitmix32(seed uint32) *splitmix32 { return &splitmix32{state: seed} }
 
 func (s *splitmix32) next() uint32 {
 	s.state += 0x9e3779b9
@@ -57,13 +52,12 @@ func (s *splitmix32) next() uint32 {
 	return z
 }
 
-// intn returns a pseudo-random integer in [0, n) using the splitmix32 PRNG.
 func (s *splitmix32) intn(n int) int {
 	return int(s.next() % uint32(n))
 }
 
 // buildFromSeed builds a word from a seed, in a shape that depends on kind:
-//   - root:   2-3 syllables, CV/V, same behavior as before
+//   - root:   2-3 syllables, CV/V
 //   - prefix: 1 syllable, 2 for twoSyllableAffixPercent of them, always ends
 //     on a vowel (attaches cleanly in front of a root that starts with a
 //     consonant)
@@ -75,7 +69,7 @@ func (s *splitmix32) intn(n int) int {
 // suffix's first syllable), never two identical vowels in a row, never a
 // consonant cluster.
 func buildFromSeed(seed uint32, kind Kind) string {
-	rng := newSplitmix32(seed)
+	rng := &splitmix32{state: seed}
 
 	// A single draw for every kind, so that roots and the first syllable of
 	// affixes stay what they were when affixes always had 1 syllable
@@ -93,8 +87,7 @@ func buildFromSeed(seed uint32, kind Kind) string {
 	for i := 0; i < syllableCount; i++ {
 		startsWithConsonant := rng.intn(100) < 85
 		if kind == KindSuffix && i == 0 {
-			// first syllable of a suffix: always a consonant, this is
-			// the attachment constraint, not a dice roll
+			// Attachment constraint of a suffix, not a dice roll
 			startsWithConsonant = true
 		}
 		if startsWithConsonant {
@@ -115,9 +108,8 @@ func buildFromSeed(seed uint32, kind Kind) string {
 
 // Generate produces a word for the given source key and kind, deterministic
 // and unique with respect to exists. On collision (exists returns true),
-// the seed is re-derived from "key_1", "key_2", etc. — always
-// deterministic, never a true random draw. It returns ErrExhausted when
-// every attempt is taken.
+// the seed is re-derived from "key_1", "key_2", etc. It returns ErrExhausted
+// when every attempt is taken.
 //
 // exists should be scoped by kind by the caller (e.g. check only against
 // other prefixes when generating a prefix), so a root can't accidentally
