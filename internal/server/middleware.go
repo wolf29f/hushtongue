@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/sha256"
 	"errors"
 	"mime"
 	"net/http"
@@ -50,8 +49,8 @@ func (s *Server) requireSession(next userHandler) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, codeUnauthenticated, "Connexion requise.")
 			return
 		}
-		tokenHash := sha256.Sum256([]byte(cookie.Value))
-		session, err := s.store.Session(r.Context(), tokenHash[:])
+		tokenHash := hashToken(cookie.Value)
+		session, err := s.store.Session(r.Context(), tokenHash)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				writeError(w, http.StatusUnauthorized, codeUnauthenticated, "Connexion requise.")
@@ -63,7 +62,7 @@ func (s *Server) requireSession(next userHandler) http.HandlerFunc {
 
 		lifetime := sessionLifetime(session.User.Role)
 		if lifetime-session.ExpiresIn > sessionExtendAfter {
-			if err := s.store.ExtendSession(r.Context(), tokenHash[:], lifetime); err != nil {
+			if err := s.store.ExtendSession(r.Context(), tokenHash, lifetime); err != nil {
 				s.logger.Warn("Extending session failed", "error", err)
 			} else {
 				s.setSessionCookie(w, cookie.Value, lifetime)

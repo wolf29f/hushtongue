@@ -116,9 +116,7 @@ func TestWriteError(t *testing.T) {
 	writeError(w, http.StatusNotFound, codeNotFound, "Ressource introuvable.")
 
 	var body apiError
-	if err := json.UnmarshalRead(w.Body, &body); err != nil {
-		t.Fatalf("decoding body: %v", err)
-	}
+	decode(t, w, &body)
 	if w.Code != http.StatusNotFound || body != (apiError{Code: codeNotFound, Message: "Ressource introuvable."}) {
 		t.Errorf("writeError() = %d %+v", w.Code, body)
 	}
@@ -158,13 +156,19 @@ func serve(s *Server, method, path, body string, cookies ...*http.Cookie) *httpt
 	return w
 }
 
+// decode decodes the response body into v.
+func decode(t *testing.T, w *httptest.ResponseRecorder, v any) {
+	t.Helper()
+	if err := json.UnmarshalRead(w.Body, v); err != nil {
+		t.Fatalf("decoding body %s: %v", w.Body, err)
+	}
+}
+
 // assertError checks the status and code of an error response.
 func assertError(t *testing.T, w *httptest.ResponseRecorder, status int, code errorCode) {
 	t.Helper()
 	var body apiError
-	if err := json.UnmarshalRead(w.Body, &body); err != nil {
-		t.Fatalf("decoding body: %v", err)
-	}
+	decode(t, w, &body)
 	if w.Code != status || body.Code != code {
 		t.Errorf("response = %d %s, want %d %s", w.Code, body.Code, status, code)
 	}

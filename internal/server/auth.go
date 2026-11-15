@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"math"
 	"net"
 	"net/http"
@@ -87,8 +88,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 // any.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookie); err == nil {
-		tokenHash := sha256.Sum256([]byte(cookie.Value))
-		if err := s.store.DeleteSession(r.Context(), tokenHash[:]); err != nil {
+		if err := s.store.DeleteSession(r.Context(), hashToken(cookie.Value)); err != nil {
 			s.writeInternalError(w, r, err)
 			return
 		}
@@ -97,17 +97,59 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// createSession stores a new session of the user and sets its cookie.
-func (s *Server) createSession(w http.ResponseWriter, r *http.Request, user storage.User) error {
+type linkLoginRequest struct {
+	Token string `json:"token"`
+}
+
+// handleLinkLogin serves POST /api/login/link: it logs the player in with
+// the token of their magic link.
+func (s *Server) handleLinkLogin(w http.ResponseWriter, r *http.Request) {
+	var req linkLoginRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	player, err := s.store.PlayerByLink(r.Context(), hashToken(req.Token))
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusUnauthorized, codeInvalidLink, "Lien de connexion invalide, demandez-en un nouveau au MJ.")
+			return
+		}
+		s.writeInternalError(w, r, err)
+		return
+	}
+	if err := s.createSession(w, r, player); err != nil {
+		s.writeInternalError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, meResponse{Name: player.Name, Role: player.Role})
+}
+
+// newToken returns a random token of 32 bytes, encoded for a cookie or a
+// URL, and its hash.
+func newToken() (string, []byte, error) {
 	random := make([]byte, 32)
 	if _, err := rand.Read(random); err != nil {
-		return err
+		return "", nil, err
 	}
 	token := base64.RawURLEncoding.EncodeToString(random)
-	tokenHash := sha256.Sum256([]byte(token))
+	return token, hashToken(token), nil
+}
 
+// hashToken returns the hash of the token, the form stored in the database
+// for the sessions and the magic links.
+func hashToken(token string) []byte {
+	hash := sha256.Sum256([]byte(token))
+	return hash[:]
+}
+
+// createSession stores a new session of the user and sets its cookie.
+func (s *Server) createSession(w http.ResponseWriter, r *http.Request, user storage.User) error {
+	token, tokenHash, err := newToken()
+	if err != nil {
+		return err
+	}
 	lifetime := sessionLifetime(user.Role)
-	if err := s.store.CreateSession(r.Context(), tokenHash[:], user.ID, lifetime); err != nil {
+	if err := s.store.CreateSession(r.Context(), tokenHash, user.ID, lifetime); err != nil {
 		return err
 	}
 	s.setSessionCookie(w, token, lifetime)

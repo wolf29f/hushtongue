@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -42,7 +40,7 @@ func expiresIn(t *testing.T, pool *pgxpool.Pool, cookie *http.Cookie) time.Durat
 	t.Helper()
 	var remaining time.Duration
 	if err := pool.QueryRow(context.Background(),
-		"SELECT expires_at - now() FROM sessions WHERE token_hash = $1", tokenHash(cookie),
+		"SELECT expires_at - now() FROM sessions WHERE token_hash = $1", hashToken(cookie.Value),
 	).Scan(&remaining); err != nil {
 		t.Fatalf("reading session: %v", err)
 	}
@@ -53,15 +51,10 @@ func expiresIn(t *testing.T, pool *pgxpool.Pool, cookie *http.Cookie) time.Durat
 func setExpiresIn(t *testing.T, pool *pgxpool.Pool, cookie *http.Cookie, remaining time.Duration) {
 	t.Helper()
 	if _, err := pool.Exec(context.Background(),
-		"UPDATE sessions SET expires_at = now() + $2 WHERE token_hash = $1", tokenHash(cookie), remaining,
+		"UPDATE sessions SET expires_at = now() + $2 WHERE token_hash = $1", hashToken(cookie.Value), remaining,
 	); err != nil {
 		t.Fatalf("updating session: %v", err)
 	}
-}
-
-func tokenHash(cookie *http.Cookie) []byte {
-	hash := sha256.Sum256([]byte(cookie.Value))
-	return hash[:]
 }
 
 func TestLogin(t *testing.T) {
@@ -71,9 +64,7 @@ func TestLogin(t *testing.T) {
 		w := serve(s, http.MethodPost, "/api/login", gmLogin)
 
 		var body meResponse
-		if err := json.UnmarshalRead(w.Body, &body); err != nil {
-			t.Fatalf("decoding body: %v", err)
-		}
+		decode(t, w, &body)
 		want := meResponse{Name: "mj", Role: "gm"}
 		if w.Code != http.StatusOK || body != want {
 			t.Errorf("login = %d %+v, want 200 %+v", w.Code, body, want)
@@ -163,9 +154,7 @@ func TestMe(t *testing.T) {
 		w := serve(s, http.MethodGet, "/api/me", "", login(t, s))
 
 		var body meResponse
-		if err := json.UnmarshalRead(w.Body, &body); err != nil {
-			t.Fatalf("decoding body: %v", err)
-		}
+		decode(t, w, &body)
 		if w.Code != http.StatusOK || body.Name != "mj" || body.Role != "gm" {
 			t.Errorf("me = %d %+v, want 200 mj gm", w.Code, body)
 		}
@@ -220,7 +209,7 @@ func TestSessionExtension(t *testing.T) {
 		}, gmSessionLifetime},
 		{"player", func(t *testing.T, s *Server, pool *pgxpool.Pool) *http.Cookie {
 			cookie := &http.Cookie{Name: sessionCookie, Value: "player-token"}
-			if err := s.store.CreateSession(context.Background(), tokenHash(cookie), pgtest.NewUser(t, pool), time.Hour); err != nil {
+			if err := s.store.CreateSession(context.Background(), hashToken(cookie.Value), pgtest.NewUser(t, pool), time.Hour); err != nil {
 				t.Fatalf("CreateSession() failed: %v", err)
 			}
 			return cookie

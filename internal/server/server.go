@@ -83,7 +83,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.handleSettings)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
+	mux.HandleFunc("POST /api/login/link", s.handleLinkLogin)
 	mux.HandleFunc("GET /api/me", s.requireSession(s.handleMe))
+	mux.HandleFunc("GET /api/players", s.requireGM(s.handleListPlayers))
+	mux.HandleFunc("POST /api/players", s.requireGM(s.handleCreatePlayer))
+	mux.HandleFunc("POST /api/players/{id}/link", s.requireGM(s.handleRegeneratePlayerLink))
+	mux.HandleFunc("DELETE /api/players/{id}", s.requireGM(s.handleDeletePlayer))
 
 	crossOrigin := http.NewCrossOriginProtection()
 	crossOrigin.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

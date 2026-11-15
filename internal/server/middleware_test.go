@@ -20,7 +20,7 @@ func TestRequireGM(t *testing.T) {
 		writeJSON(w, http.StatusOK, user.Name)
 	})
 	player := &http.Cookie{Name: sessionCookie, Value: "player-token"}
-	if err := s.store.CreateSession(context.Background(), tokenHash(player), pgtest.NewUser(t, pool), time.Hour); err != nil {
+	if err := s.store.CreateSession(context.Background(), hashToken(player.Value), pgtest.NewUser(t, pool), time.Hour); err != nil {
 		t.Fatalf("CreateSession() failed: %v", err)
 	}
 
