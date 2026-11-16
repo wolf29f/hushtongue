@@ -31,6 +31,13 @@ type Config struct {
 	ConLangLabel    string   `env:"HUSHTONGUE_CON_LANG_LABEL" envDefault:"conLang"`
 }
 
+// SecureCookies tells whether the cookies are Secure: always, unless the
+// public URL is http://, as Safari refuses a Secure cookie on
+// http://localhost.
+func (c Config) SecureCookies() bool {
+	return c.PublicURL == nil || c.PublicURL.Scheme != "http"
+}
+
 // Load reads the configuration from environment, or from the process
 // environment when nil. The error lists every missing or invalid variable.
 func Load(environment map[string]string) (Config, error) {

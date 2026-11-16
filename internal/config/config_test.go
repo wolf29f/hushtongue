@@ -66,3 +66,27 @@ func TestLoadListen(t *testing.T) {
 		t.Errorf("LoadListen() = %+v, %v, want 127.0.0.1:9000 without the other variables", listen, err)
 	}
 }
+
+func TestSecureCookies(t *testing.T) {
+	tests := map[string]bool{
+		"":                      true,
+		"https://jdr.example":   true,
+		"http://localhost:8080": false,
+	}
+	for publicURL, want := range tests {
+		environment := map[string]string{
+			"DATABASE_URL":           "postgres://localhost/hushtongue",
+			"HUSHTONGUE_GM_PASSWORD": "secret",
+		}
+		if publicURL != "" {
+			environment["HUSHTONGUE_PUBLIC_URL"] = publicURL
+		}
+		cfg, err := config.Load(environment)
+		if err != nil {
+			t.Fatalf("Load() failed: %v", err)
+		}
+		if got := cfg.SecureCookies(); got != want {
+			t.Errorf("SecureCookies() with public URL %q = %v, want %v", publicURL, got, want)
+		}
+	}
+}

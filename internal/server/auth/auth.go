@@ -1,5 +1,4 @@
-// Package auth logs the users in and out, and restricts the routes to the
-// logged in users.
+// Package auth logs the users in and out.
 package auth
 
 import (
@@ -22,13 +21,12 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 )
 
-const (
-	sessionCookie = "hushtongue_session"
+// SessionCookie is the name of the session cookie.
+const SessionCookie = "hushtongue_session"
 
+const (
 	gmSessionLifetime     = 30 * 24 * time.Hour
 	playerSessionLifetime = 365 * 24 * time.Hour
-	// sessionExtendAfter spaces out the writes extending a session.
-	sessionExtendAfter = 24 * time.Hour
 
 	loginAttempts = 5
 	loginPeriod   = time.Minute
@@ -41,13 +39,11 @@ type Store interface {
 	GM(ctx context.Context) (storage.User, error)
 	PlayerByLink(ctx context.Context, linkHash []byte) (storage.User, error)
 	CreateSession(ctx context.Context, tokenHash []byte, userID int, lifetime time.Duration) error
-	Session(ctx context.Context, tokenHash []byte) (storage.Session, error)
-	ExtendSession(ctx context.Context, tokenHash []byte, lifetime time.Duration) error
 	DeleteSession(ctx context.Context, tokenHash []byte) error
 	PurgeSessions(ctx context.Context) (int64, error)
 }
 
-// Handlers serves the authentication routes and checks the sessions.
+// Handlers serves the authentication routes.
 type Handlers struct {
 	gmName       string
 	gmPassword   string
@@ -59,10 +55,9 @@ type Handlers struct {
 // New creates the handlers on top of store.
 func New(cfg config.Config, store Store) *Handlers {
 	return &Handlers{
-		gmName:     cfg.GMUsername,
-		gmPassword: cfg.GMPassword,
-		// Safari refuses a Secure cookie on http://localhost
-		secureCookie: cfg.PublicURL == nil || cfg.PublicURL.Scheme != "http",
+		gmName:       cfg.GMUsername,
+		gmPassword:   cfg.GMPassword,
+		secureCookie: cfg.SecureCookies(),
 		store:        store,
 		loginLimiter: newLimiter(loginAttempts, loginPeriod, time.Now),
 	}
@@ -89,7 +84,8 @@ func (h *Handlers) PurgeSessions(ctx context.Context) {
 	}
 }
 
-func sessionLifetime(role string) time.Duration {
+// SessionLifetime returns how long a session of a user of role lasts.
+func SessionLifetime(role string) time.Duration {
 	if role == storage.RoleGM {
 		return gmSessionLifetime
 	}
@@ -102,7 +98,8 @@ type meResponse struct {
 }
 
 // Me serves GET /api/me: the user's name and role.
-func (h *Handlers) Me(w http.ResponseWriter, _ *http.Request, user storage.User) {
+func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
+	user := httpapi.User(r.Context())
 	httpapi.WriteJSON(w, http.StatusOK, meResponse{Name: user.Name, Role: user.Role})
 }
 
@@ -147,13 +144,13 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout serves POST /api/logout: it deletes the current session, if any.
 func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(sessionCookie); err == nil {
+	if cookie, err := r.Cookie(SessionCookie); err == nil {
 		if err := h.store.DeleteSession(r.Context(), HashToken(cookie.Value)); err != nil {
 			httpapi.WriteInternalError(w, r, err)
 			return
 		}
 	}
-	h.setSessionCookie(w, "", -1)
+	SetSessionCookie(w, "", -1, h.secureCookie)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -208,28 +205,28 @@ func (h *Handlers) createSession(w http.ResponseWriter, r *http.Request, user st
 	if err != nil {
 		return err
 	}
-	lifetime := sessionLifetime(user.Role)
+	lifetime := SessionLifetime(user.Role)
 	if err := h.store.CreateSession(r.Context(), tokenHash, user.ID, lifetime); err != nil {
 		return err
 	}
-	h.setSessionCookie(w, token, lifetime)
+	SetSessionCookie(w, token, lifetime, h.secureCookie)
 	return nil
 }
 
-// setSessionCookie sets the session cookie to token for lifetime, or removes
+// SetSessionCookie sets the session cookie to token for lifetime, or removes
 // it when lifetime is negative.
-func (h *Handlers) setSessionCookie(w http.ResponseWriter, token string, lifetime time.Duration) {
+func SetSessionCookie(w http.ResponseWriter, token string, lifetime time.Duration, secure bool) {
 	maxAge := int(lifetime / time.Second)
 	if lifetime < 0 {
 		maxAge = -1
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
+		Name:     SessionCookie,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   h.secureCookie,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }

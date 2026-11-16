@@ -1,5 +1,5 @@
 // Package httpapi holds what the API's handlers share: the JSON requests and
-// responses, the error format and the routing of the API. It logs with the
+// responses, the error format and the logged in user. It logs with the
 // default slog logger.
 package httpapi
 
@@ -98,30 +98,4 @@ func ReadJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
-}
-
-// fallbackWriter replaces the plain text body of an error with a JSON one.
-type fallbackWriter struct {
-	http.ResponseWriter
-	replaced bool
-}
-
-func (f *fallbackWriter) WriteHeader(status int) {
-	switch status {
-	case http.StatusNotFound:
-		f.replaced = true
-		WriteError(f.ResponseWriter, status, CodeNotFound, "Ressource introuvable.")
-	case http.StatusMethodNotAllowed:
-		f.replaced = true
-		WriteError(f.ResponseWriter, status, CodeMethodNotAllowed, "Méthode non autorisée.")
-	default:
-		f.ResponseWriter.WriteHeader(status)
-	}
-}
-
-func (f *fallbackWriter) Write(b []byte) (int, error) {
-	if f.replaced {
-		return len(b), nil
-	}
-	return f.ResponseWriter.Write(b)
 }

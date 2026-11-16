@@ -11,7 +11,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/server/auth"
 	"github.com/wolf29f/hushtongue/internal/server/health"
-	"github.com/wolf29f/hushtongue/internal/server/httpapi"
+	"github.com/wolf29f/hushtongue/internal/server/middleware"
 	"github.com/wolf29f/hushtongue/internal/server/players"
 	"github.com/wolf29f/hushtongue/internal/server/settings"
 	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
@@ -31,6 +31,7 @@ const (
 // Server holds the handlers of each feature.
 type Server struct {
 	logger   *slog.Logger
+	sessions *middleware.Sessions
 	auth     *auth.Handlers
 	health   *health.Handlers
 	settings *settings.Handlers
@@ -41,6 +42,7 @@ type Server struct {
 func New(cfg config.Config, store *postgres.Store, logger *slog.Logger) *Server {
 	return &Server{
 		logger:   logger,
+		sessions: middleware.New(cfg, store),
 		auth:     auth.New(cfg, store),
 		health:   health.New(store),
 		settings: settings.New(cfg),
@@ -76,16 +78,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/login", s.auth.Login)
 	mux.HandleFunc("POST /api/login/link", s.auth.LinkLogin)
 	mux.HandleFunc("POST /api/logout", s.auth.Logout)
-	mux.HandleFunc("GET /api/me", s.auth.RequireSession(s.auth.Me))
+	mux.Handle("GET /api/me", s.sessions.RequireSession(http.HandlerFunc(s.auth.Me)))
 
-	mux.HandleFunc("GET /api/players", s.auth.RequireGM(s.players.List))
-	mux.HandleFunc("POST /api/players", s.auth.RequireGM(s.players.Create))
-	mux.HandleFunc("POST /api/players/{id}/link", s.auth.RequireGM(s.players.RegenerateLink))
-	mux.HandleFunc("DELETE /api/players/{id}", s.auth.RequireGM(s.players.Delete))
+	mux.Handle("GET /api/players", s.sessions.RequireGM(http.HandlerFunc(s.players.List)))
+	mux.Handle("POST /api/players", s.sessions.RequireGM(http.HandlerFunc(s.players.Create)))
+	mux.Handle("POST /api/players/{id}/link", s.sessions.RequireGM(http.HandlerFunc(s.players.RegenerateLink)))
+	mux.Handle("DELETE /api/players/{id}", s.sessions.RequireGM(http.HandlerFunc(s.players.Delete)))
 
-	crossOrigin := http.NewCrossOriginProtection()
-	crossOrigin.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeCrossOrigin, "Requête d'un autre site refusée.")
-	}))
-	return http.MaxBytesHandler(crossOrigin.Handler(httpapi.Handler(mux)), maxBodySize)
+	return http.MaxBytesHandler(middleware.CrossOrigin(middleware.JSON(mux)), maxBodySize)
 }

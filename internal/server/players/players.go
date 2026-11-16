@@ -38,7 +38,7 @@ type playerResponse struct {
 }
 
 // List serves GET /api/players: the players, in creation order.
-func (h *Handlers) List(w http.ResponseWriter, r *http.Request, _ storage.User) {
+func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	players, err := h.store.ListPlayers(r.Context())
 	if err != nil {
 		httpapi.WriteServiceError(w, r, err)
@@ -63,7 +63,7 @@ type createResponse struct {
 
 // Create serves POST /api/players: it creates a player and returns their
 // magic link, shown this once.
-func (h *Handlers) Create(w http.ResponseWriter, r *http.Request, _ storage.User) {
+func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 	var req createRequest
 	if !httpapi.ReadJSON(w, r, &req) {
 		return
@@ -94,7 +94,7 @@ type linkResponse struct {
 // RegenerateLink serves POST /api/players/{id}/link: it replaces the
 // player's magic link, ends their sessions and returns the new link, shown
 // this once.
-func (h *Handlers) RegenerateLink(w http.ResponseWriter, r *http.Request, _ storage.User) {
+func (h *Handlers) RegenerateLink(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpapi.PathID(w, r)
 	if !ok {
 		return
@@ -113,7 +113,7 @@ func (h *Handlers) RegenerateLink(w http.ResponseWriter, r *http.Request, _ stor
 
 // Delete serves DELETE /api/players/{id}: it deletes the player with their
 // dictionary, texts and sessions.
-func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request, _ storage.User) {
+func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpapi.PathID(w, r)
 	if !ok {
 		return

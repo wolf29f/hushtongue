@@ -148,8 +148,9 @@ hushtongue/
 ├── internal/
 │   ├── config/             # variables d'env (remplace le build tag gm)
 │   ├── server/             # HTTP : table des routes (server.go)
-│   │   ├── httpapi/        # commun : JSON, format d'erreur, contrôle du Content-Type
-│   │   ├── auth/           # sessions, login, middlewares RequireSession et RequireGM
+│   │   ├── httpapi/        # commun : JSON, format d'erreur, utilisateur de la requête
+│   │   ├── middleware/     # JSON (404/405, Content-Type), CrossOrigin, RequireSession, RequireGM
+│   │   ├── auth/           # sessions, login, logout
 │   │   └── players/, health/, settings/, words/…  # un paquet par fonctionnalité
 │   └── services/           # métier : generator, lexicon, composer
 │       └── storage/
@@ -174,10 +175,11 @@ hushtongue/
 - En dev : `go run ./cmd/server` et `npm run dev` dans `web/`. Vite transmet `/api` au serveur Go ; le cookie reste sur la même origine, sans CORS.
 - Pas d'outillage monorepo (un seul paquet JS), pas de génération de types depuis Go pour l'instant.
 - Serveur HTTP : bibliothèque standard (`net/http`, routage par motifs, `encoding/json/v2`, actif par défaut depuis Go 1.27), `pgx/v5` pour Postgres.
-- Organisation de `internal/server` : un sous-paquet par fonctionnalité (`auth`, `players`, `health`, `settings`, puis `words`, `translations`, `generation`, `translate`, `texts`, `import`), plus `httpapi` pour ce qu'ils partagent (lecture et écriture JSON, format d'erreur, `PathID`, contrôle du `Content-Type` et réponses 404/405 en JSON).
+- Organisation de `internal/server` : un sous-paquet par fonctionnalité (`auth`, `players`, `health`, `settings`, puis `words`, `translations`, `generation`, `translate`, `texts`, `import`), plus `httpapi` pour ce qu'ils partagent (lecture et écriture JSON, format d'erreur, `PathID`, utilisateur de la requête) et `middleware` pour tous les middlewares (réponses 404/405 en JSON et contrôle du `Content-Type`, protection cross-origin, `RequireSession`, `RequireGM`).
+  - Les middlewares ont la forme standard `func(http.Handler) http.Handler`, pour s'enchaîner librement. `RequireSession` met l'utilisateur dans le contexte de la requête (`httpapi.WithUser`) ; un handler le lit avec `httpapi.User(r.Context())`, qui panique sans utilisateur : lire l'utilisateur sur une route sans `RequireSession` est une erreur de câblage, couverte par les tests de `internal/server`.
   - Chaque fonctionnalité a une struct `Handlers` créée par `New`, dont les méthodes sont les handlers, sans variable globale. Ses dépendances sont des interfaces déclarées dans le paquet, réduites aux méthodes qu'il appelle (`players.Store`, `health.Pinger`…) : un handler ne voit que ce dont il a besoin, et ses tests passent de petits faux écrits à la main, sans Postgres.
-  - `httpapi` n'importe aucune fonctionnalité ; une fonctionnalité peut en importer une autre pour un helper (`players` utilise `auth.NewToken` et `auth.HashToken`), sans cycle.
-  - Une seule table des routes dans `server.go`, avec le middleware de chaque route (`auth.RequireSession`, `auth.RequireGM`). `server.New` passe le `*postgres.Store` à chaque `New`, ce qui vérifie à la compilation qu'il satisfait leurs interfaces.
+  - `httpapi` n'importe aucune fonctionnalité ; une fonctionnalité peut en importer une autre pour un helper (`players` utilise `auth.NewToken` et `auth.HashToken`, `middleware` le cookie et les durées de session d'`auth`), sans cycle.
+  - Une seule table des routes dans `server.go`, avec le middleware de chaque route (`middleware.RequireSession`, `middleware.RequireGM`). `server.New` passe le `*postgres.Store` à chaque `New`, ce qui vérifie à la compilation qu'il satisfait leurs interfaces.
   - Handlers fins : lire la requête, appeler le service, écrire la réponse ; la logique métier reste dans `internal/services`.
   - Les services renvoient des erreurs sentinelles (`storage.ErrNotFound`…), converties en code HTTP et `httpapi.Error` par une seule fonction, `httpapi.WriteServiceError`.
   - Tests en deux couches : chaque fonctionnalité sur ses faux ; `internal/server` sur Postgres à travers la table des routes, pour le câblage (routes réservées au MJ, CSRF, 404/405) et un parcours complet (login, création d'un joueur, connexion par lien, régénération, suppression).

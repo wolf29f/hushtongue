@@ -60,25 +60,6 @@ func (s *fakeStore) CreateSession(_ context.Context, tokenHash []byte, userID in
 	return nil
 }
 
-func (s *fakeStore) Session(_ context.Context, tokenHash []byte) (storage.Session, error) {
-	if s.err != nil {
-		return storage.Session{}, s.err
-	}
-	session, ok := s.sessions[string(tokenHash)]
-	if !ok || session.expiresIn <= 0 {
-		return storage.Session{}, storage.ErrNotFound
-	}
-	return storage.Session{User: session.user, ExpiresIn: session.expiresIn}, nil
-}
-
-func (s *fakeStore) ExtendSession(_ context.Context, tokenHash []byte, lifetime time.Duration) error {
-	if s.err != nil {
-		return s.err
-	}
-	s.sessions[string(tokenHash)].expiresIn = lifetime
-	return nil
-}
-
 func (s *fakeStore) DeleteSession(_ context.Context, tokenHash []byte) error {
 	if s.err != nil {
 		return s.err

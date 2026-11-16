@@ -49,7 +49,7 @@ func assertError(t *testing.T, w *httptest.ResponseRecorder, status int, code ht
 // sessionCookieOf returns the session cookie set by the response, or nil.
 func sessionCookieOf(w *httptest.ResponseRecorder) *http.Cookie {
 	for _, cookie := range w.Result().Cookies() {
-		if cookie.Name == sessionCookie {
+		if cookie.Name == SessionCookie {
 			return cookie
 		}
 	}
@@ -82,11 +82,6 @@ func session(t *testing.T, store *fakeStore, cookie *http.Cookie) *fakeSession {
 		t.Fatalf("no session stored for cookie %q", cookie.Value)
 	}
 	return stored
-}
-
-// me answers GET /api/me.
-func me(h *Handlers, cookies ...*http.Cookie) *httptest.ResponseRecorder {
-	return serve(h.RequireSession(h.Me), "", cookies...)
 }
 
 func TestLogin(t *testing.T) {
@@ -180,100 +175,24 @@ func TestLogin(t *testing.T) {
 }
 
 func TestMe(t *testing.T) {
-	t.Run("returns the session's user", func(t *testing.T) {
-		h := New(testConfig, newFakeStore())
+	h := New(testConfig, newFakeStore())
 
-		w := me(h, login(t, h))
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r = r.WithContext(httpapi.WithUser(r.Context(), storage.User{ID: 1, Name: "mj", Role: storage.RoleGM}))
+	w := httptest.NewRecorder()
+	h.Me(w, r)
 
-		var body meResponse
-		decode(t, w, &body)
-		if w.Code != http.StatusOK || body != (meResponse{Name: "mj", Role: "gm"}) {
-			t.Errorf("me = %d %+v, want 200 mj gm", w.Code, body)
-		}
-	})
-
-	t.Run("requires a session", func(t *testing.T) {
-		h := New(testConfig, newFakeStore())
-
-		assertError(t, me(h), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
-	})
-
-	t.Run("refuses an unknown session", func(t *testing.T) {
-		h := New(testConfig, newFakeStore())
-
-		w := me(h, &http.Cookie{Name: sessionCookie, Value: "nope"})
-
-		assertError(t, w, http.StatusUnauthorized, httpapi.CodeUnauthenticated)
-	})
-
-	t.Run("refuses an expired session", func(t *testing.T) {
-		store := newFakeStore()
-		h := New(testConfig, store)
-		cookie := login(t, h)
-		session(t, store, cookie).expiresIn = -time.Second
-
-		assertError(t, me(h, cookie), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
-	})
-}
-
-func TestSessionExtension(t *testing.T) {
-	t.Run("leaves a session extended less than a day ago", func(t *testing.T) {
-		store := newFakeStore()
-		h := New(testConfig, store)
-		cookie := login(t, h)
-		session(t, store, cookie).expiresIn = gmSessionLifetime - 23*time.Hour
-
-		w := me(h, cookie)
-
-		if w.Code != http.StatusOK || sessionCookieOf(w) != nil {
-			t.Errorf("me = %d with cookie %v, want 200 without cookie", w.Code, sessionCookieOf(w))
-		}
-		if remaining := session(t, store, cookie).expiresIn; remaining != gmSessionLifetime-23*time.Hour {
-			t.Errorf("session expires in %v, want it unchanged", remaining)
-		}
-	})
-
-	t.Run("extends a GM session after a day", func(t *testing.T) {
-		store := newFakeStore()
-		h := New(testConfig, store)
-		cookie := login(t, h)
-		session(t, store, cookie).expiresIn = gmSessionLifetime - 25*time.Hour
-
-		w := me(h, cookie)
-
-		renewed := sessionCookieOf(w)
-		if w.Code != http.StatusOK || renewed == nil || renewed.Value != cookie.Value ||
-			renewed.MaxAge != int(gmSessionLifetime/time.Second) {
-			t.Errorf("me = %d with cookie %+v, want 200 renewing the cookie for 30 days", w.Code, renewed)
-		}
-		if remaining := session(t, store, cookie).expiresIn; remaining != gmSessionLifetime {
-			t.Errorf("session expires in %v, want 30 days", remaining)
-		}
-	})
-
-	t.Run("extends a player session after a day", func(t *testing.T) {
-		store := newFakeStore()
-		h := New(testConfig, store)
-		addPlayer(store, "link")
-		cookie := sessionCookieOf(serve(h.LinkLogin, `{"token": "link"}`))
-		session(t, store, cookie).expiresIn = playerSessionLifetime - 25*time.Hour
-
-		w := me(h, cookie)
-
-		renewed := sessionCookieOf(w)
-		if w.Code != http.StatusOK || renewed == nil || renewed.Value != cookie.Value ||
-			renewed.MaxAge != int(playerSessionLifetime/time.Second) {
-			t.Errorf("me = %d with cookie %+v, want 200 renewing the cookie for a year", w.Code, renewed)
-		}
-		if remaining := session(t, store, cookie).expiresIn; remaining != playerSessionLifetime {
-			t.Errorf("session expires in %v, want a year", remaining)
-		}
-	})
+	var body meResponse
+	decode(t, w, &body)
+	if w.Code != http.StatusOK || body != (meResponse{Name: "mj", Role: "gm"}) {
+		t.Errorf("me = %d %+v, want 200 mj gm", w.Code, body)
+	}
 }
 
 func TestLogout(t *testing.T) {
 	t.Run("ends the session", func(t *testing.T) {
-		h := New(testConfig, newFakeStore())
+		store := newFakeStore()
+		h := New(testConfig, store)
 		cookie := login(t, h)
 
 		w := serve(h.Logout, "", cookie)
@@ -281,7 +200,9 @@ func TestLogout(t *testing.T) {
 		if cleared := sessionCookieOf(w); w.Code != http.StatusNoContent || cleared == nil || cleared.MaxAge >= 0 {
 			t.Errorf("logout = %d with cookie %+v, want 204 removing the cookie", w.Code, cleared)
 		}
-		assertError(t, me(h, cookie), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
+		if len(store.sessions) != 0 {
+			t.Errorf("sessions = %+v, want none", store.sessions)
+		}
 	})
 
 	t.Run("succeeds without a session", func(t *testing.T) {

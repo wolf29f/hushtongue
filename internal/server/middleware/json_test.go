@@ -1,20 +1,22 @@
-package httpapi
+package middleware
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/wolf29f/hushtongue/internal/server/httpapi"
 )
 
-func TestHandler(t *testing.T) {
+func TestJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /read", func(w http.ResponseWriter, _ *http.Request) {
-		WriteJSON(w, http.StatusOK, "read")
+		httpapi.WriteJSON(w, http.StatusOK, "read")
 	})
 	mux.HandleFunc("POST /write", func(w http.ResponseWriter, _ *http.Request) {
-		WriteJSON(w, http.StatusOK, "written")
+		httpapi.WriteJSON(w, http.StatusOK, "written")
 	})
-	handler := Handler(mux)
+	handler := JSON(mux)
 
 	tests := []struct {
 		name        string
@@ -22,11 +24,11 @@ func TestHandler(t *testing.T) {
 		path        string
 		contentType string
 		status      int
-		code        ErrorCode
+		code        httpapi.ErrorCode
 	}{
-		{"unknown route", http.MethodGet, "/nope", "", http.StatusNotFound, CodeNotFound},
-		{"wrong method", http.MethodPost, "/read", "", http.StatusMethodNotAllowed, CodeMethodNotAllowed},
-		{"mutation without JSON", http.MethodPost, "/write", "text/plain", http.StatusUnsupportedMediaType, CodeUnsupportedMediaType},
+		{"unknown route", http.MethodGet, "/nope", "", http.StatusNotFound, httpapi.CodeNotFound},
+		{"wrong method", http.MethodPost, "/read", "", http.StatusMethodNotAllowed, httpapi.CodeMethodNotAllowed},
+		{"mutation without JSON", http.MethodPost, "/write", "text/plain", http.StatusUnsupportedMediaType, httpapi.CodeUnsupportedMediaType},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

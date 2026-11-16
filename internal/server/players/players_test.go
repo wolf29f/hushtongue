@@ -70,14 +70,13 @@ func (s *fakeStore) DeletePlayer(_ context.Context, id int) error {
 	return nil
 }
 
-// serve sends the request to the players routes, as the GM.
+// serve sends the request to the players routes.
 func serve(h *Handlers, method, path, body string) *httptest.ResponseRecorder {
-	gm := storage.User{ID: 1, Name: "mj", Role: storage.RoleGM}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/players", func(w http.ResponseWriter, r *http.Request) { h.List(w, r, gm) })
-	mux.HandleFunc("POST /api/players", func(w http.ResponseWriter, r *http.Request) { h.Create(w, r, gm) })
-	mux.HandleFunc("POST /api/players/{id}/link", func(w http.ResponseWriter, r *http.Request) { h.RegenerateLink(w, r, gm) })
-	mux.HandleFunc("DELETE /api/players/{id}", func(w http.ResponseWriter, r *http.Request) { h.Delete(w, r, gm) })
+	mux.HandleFunc("GET /api/players", h.List)
+	mux.HandleFunc("POST /api/players", h.Create)
+	mux.HandleFunc("POST /api/players/{id}/link", h.RegenerateLink)
+	mux.HandleFunc("DELETE /api/players/{id}", h.Delete)
 
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
