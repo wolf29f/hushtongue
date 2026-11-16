@@ -46,34 +46,42 @@ func (p Proposal) rank() int {
 	return count
 }
 
-// Service builds and applies translation proposals.
-type Service struct {
-	storage storage.Storage
+// Store is the storage of the dictionary the service needs.
+type Store interface {
+	Word(ctx context.Context, userID, id int) (storage.WordDetails, error)
+	ListWordDetails(ctx context.Context, userID int, language string) ([]storage.WordDetails, error)
+	ListTranslations(ctx context.Context, userID, wordID int) ([]storage.Translation, error)
+	SaveGeneratedTranslation(ctx context.Context, userID, wordID int, parts []storage.TranslationPart) error
 }
 
-// New creates a translation service on top of storage.
-func New(storage storage.Storage) *Service {
-	return &Service{storage: storage}
+// Service builds and applies translation proposals.
+type Service struct {
+	store Store
+}
+
+// New creates a translation service on top of store.
+func New(store Store) *Service {
+	return &Service{store: store}
 }
 
 // Propose lists the ways to translate the source word wordID, best first.
 // Roots are decomposed into known affixes and a root, affixes are not.
 func (s *Service) Propose(ctx context.Context, userID, wordID int) ([]Proposal, error) {
-	word, err := s.storage.GetWord(ctx, userID, wordID)
+	word, err := s.store.Word(ctx, userID, wordID)
 	if err != nil {
 		return nil, err
 	}
-	sources, err := s.storage.ListWordDetails(ctx, userID, storage.LangSource)
+	sources, err := s.store.ListWordDetails(ctx, userID, storage.LangSource)
 	if err != nil {
 		return nil, err
 	}
-	cons, err := s.storage.ListWordDetails(ctx, userID, storage.LangCon)
+	cons, err := s.store.ListWordDetails(ctx, userID, storage.LangCon)
 	if err != nil {
 		return nil, err
 	}
 
 	b := builder{
-		storage:   s.storage,
+		store:     s.store,
 		userID:    userID,
 		roots:     make(map[string]storage.WordDetails),
 		conRoots:  make(map[string]storage.WordDetails),
@@ -137,7 +145,7 @@ func (s *Service) Propose(ctx context.Context, userID, wordID int) ([]Proposal, 
 
 // Apply stores the proposal as a translation of the source word wordID.
 func (s *Service) Apply(ctx context.Context, userID, wordID int, proposal Proposal) error {
-	return s.storage.SaveGeneratedTranslation(ctx, userID, wordID, proposal.Parts)
+	return s.store.SaveGeneratedTranslation(ctx, userID, wordID, proposal.Parts)
 }
 
 // section is a part of the source word, with the normalized form its
@@ -159,8 +167,8 @@ func known(word storage.WordDetails) section {
 }
 
 type builder struct {
-	storage storage.Storage
-	userID  int
+	store  Store
+	userID int
 
 	prefixes []storage.WordDetails
 	suffixes []storage.WordDetails
@@ -187,7 +195,7 @@ func (b *builder) homonyms(ctx context.Context, wordID int, normalized string) (
 	if !ok {
 		return nil, nil
 	}
-	translations, err := b.storage.ListTranslations(ctx, b.userID, root.ID)
+	translations, err := b.store.ListTranslations(ctx, b.userID, root.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +295,7 @@ func (b *builder) translate(ctx context.Context, sections []section) ([]Proposal
 // options returns the section's existing translations, or a generated one.
 func (b *builder) options(ctx context.Context, s section) ([]storage.TranslationPart, error) {
 	if s.part.SourceID != 0 {
-		translations, err := b.storage.ListTranslations(ctx, b.userID, s.part.SourceID)
+		translations, err := b.store.ListTranslations(ctx, b.userID, s.part.SourceID)
 		if err != nil {
 			return nil, err
 		}

@@ -12,7 +12,7 @@ func TestAddWord(t *testing.T) {
 	t.Run("stores a root with its normalized form", func(t *testing.T) {
 		f := newFixture(t)
 
-		got, err := f.store.AddWord(ctx, f.user, storage.LangSource, "Éléphant")
+		got, err := f.store.AddWord(t.Context(), f.user, storage.LangSource, "Éléphant")
 		if err != nil {
 			t.Fatalf("AddWord() failed: %v", err)
 		}
@@ -26,19 +26,19 @@ func TestAddWord(t *testing.T) {
 		f := newFixture(t)
 		mer := f.word(t, "source", "mer", "root")
 
-		_, err := f.store.AddWord(ctx, f.user, storage.LangSource, "Mèr")
+		_, err := f.store.AddWord(t.Context(), f.user, storage.LangSource, "Mèr")
 		if exists, ok := errors.AsType[*storage.WordExistsError](err); !ok || exists.ExistingID != mer {
 			t.Errorf("AddWord() error = %v, want a WordExistsError for %d", err, mer)
 		}
 	})
 }
 
-func TestGetWord(t *testing.T) {
+func TestWord(t *testing.T) {
 	t.Run("reports a missing word", func(t *testing.T) {
 		f := newFixture(t)
 
-		if _, err := f.store.GetWord(ctx, f.user, 1); !errors.Is(err, storage.ErrNotFound) {
-			t.Errorf("GetWord() error = %v, want ErrNotFound", err)
+		if _, err := f.store.Word(t.Context(), f.user, 1); !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("Word() error = %v, want ErrNotFound", err)
 		}
 	})
 }
@@ -50,7 +50,7 @@ func TestListWordDetails(t *testing.T) {
 		re := f.word(t, "source", "re", "prefix")
 		f.word(t, "con", "ailo", "root")
 
-		got, err := f.store.ListWordDetails(ctx, f.user, storage.LangSource)
+		got, err := f.store.ListWordDetails(t.Context(), f.user, storage.LangSource)
 		if err != nil {
 			t.Fatalf("ListWordDetails() failed: %v", err)
 		}
@@ -69,7 +69,7 @@ func TestSaveWord(t *testing.T) {
 		f := newFixture(t)
 		mer := f.word(t, "source", "mer", "root")
 
-		got, err := f.store.SaveWord(ctx, f.user, storage.WordDetails{ID: mer, Language: "source", Text: "Mer", Kind: "root"})
+		got, err := f.store.SaveWord(t.Context(), f.user, storage.WordDetails{ID: mer, Language: "source", Text: "Mer", Kind: "root"})
 		if err != nil {
 			t.Fatalf("SaveWord() failed: %v", err)
 		}
@@ -83,7 +83,7 @@ func TestSaveWord(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ciel := f.word(t, "source", "ciel", "root")
 
-		_, err := f.store.SaveWord(ctx, f.user, storage.WordDetails{ID: ciel, Language: "source", Text: "Mèr", Kind: "root"})
+		_, err := f.store.SaveWord(t.Context(), f.user, storage.WordDetails{ID: ciel, Language: "source", Text: "Mèr", Kind: "root"})
 		if exists, ok := errors.AsType[*storage.WordExistsError](err); !ok || exists.ExistingID != mer {
 			t.Errorf("SaveWord() error = %v, want a WordExistsError for %d", err, mer)
 		}
@@ -94,7 +94,7 @@ func TestSaveWord(t *testing.T) {
 		f.word(t, "source", "re", "prefix")
 		ciel := f.word(t, "source", "ciel", "root")
 
-		if _, err := f.store.SaveWord(ctx, f.user, storage.WordDetails{ID: ciel, Language: "source", Text: "re", Kind: "root"}); err != nil {
+		if _, err := f.store.SaveWord(t.Context(), f.user, storage.WordDetails{ID: ciel, Language: "source", Text: "re", Kind: "root"}); err != nil {
 			t.Fatalf("SaveWord() failed: %v", err)
 		}
 	})
@@ -111,13 +111,13 @@ func TestMergeWords(t *testing.T) {
 		f.translation(t, ocean, ailo, "manual")
 		f.translation(t, ocean, vora, "manual")
 
-		if err := f.store.MergeWords(ctx, f.user, ocean, mer); err != nil {
+		if err := f.store.MergeWords(t.Context(), f.user, ocean, mer); err != nil {
 			t.Fatalf("MergeWords() failed: %v", err)
 		}
 
 		f.assertTranslations(t, mer, "ailo", "vora")
 		f.assertOrigin(t, mer, ailo, "generated")
-		if _, err := f.store.GetWord(ctx, f.user, ocean); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := f.store.Word(t.Context(), f.user, ocean); !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("merged word: %v, want ErrNotFound", err)
 		}
 	})
@@ -129,7 +129,7 @@ func TestMergeWords(t *testing.T) {
 		aylo := f.word(t, "con", "aylo", "root")
 		f.translation(t, mer, aylo, "manual")
 
-		if err := f.store.MergeWords(ctx, f.user, aylo, ailo); err != nil {
+		if err := f.store.MergeWords(t.Context(), f.user, aylo, ailo); err != nil {
 			t.Fatalf("MergeWords() failed: %v", err)
 		}
 
@@ -142,7 +142,7 @@ func TestMergeWords(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
 
-		if err := f.store.MergeWords(ctx, f.user, mer, ailo); err == nil {
+		if err := f.store.MergeWords(t.Context(), f.user, mer, ailo); err == nil {
 			t.Fatal("MergeWords() succeeded unexpectedly")
 		}
 		f.assertWordExists(t, mer)
@@ -154,7 +154,7 @@ func TestMergeWords(t *testing.T) {
 		ailo := f.word(t, "con", "ailo", "root")
 		f.translation(t, mer, ailo, "manual")
 
-		if err := f.store.MergeWords(ctx, f.user, mer, mer); err == nil {
+		if err := f.store.MergeWords(t.Context(), f.user, mer, mer); err == nil {
 			t.Fatal("MergeWords() succeeded unexpectedly")
 		}
 		f.assertWordExists(t, mer)
@@ -171,11 +171,11 @@ func TestDeleteWord(t *testing.T) {
 		f.translation(t, mer, ailo, "manual")
 		f.translation(t, ciel, ailo, "manual")
 
-		if err := f.store.DeleteWord(ctx, f.user, mer); err != nil {
+		if err := f.store.DeleteWord(t.Context(), f.user, mer); err != nil {
 			t.Fatalf("DeleteWord() failed: %v", err)
 		}
 
-		if _, err := f.store.GetWord(ctx, f.user, mer); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := f.store.Word(t.Context(), f.user, mer); !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("deleted word: %v, want ErrNotFound", err)
 		}
 		f.assertWordExists(t, ailo)
@@ -190,7 +190,7 @@ func TestDeleteWord(t *testing.T) {
 	t.Run("reports a missing word", func(t *testing.T) {
 		f := newFixture(t)
 
-		if err := f.store.DeleteWord(ctx, f.user, 1); !errors.Is(err, storage.ErrNotFound) {
+		if err := f.store.DeleteWord(t.Context(), f.user, 1); !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("DeleteWord() error = %v, want ErrNotFound", err)
 		}
 	})
@@ -207,7 +207,7 @@ func TestChangeWordKind(t *testing.T) {
 		f.translation(t, ciel, ailo, "manual")
 		f.translation(t, ciel, vora, "manual")
 
-		word, err := f.store.ChangeWordKind(ctx, f.user, ailo, "prefix")
+		word, err := f.store.ChangeWordKind(t.Context(), f.user, ailo, "prefix")
 		if err != nil {
 			t.Fatalf("ChangeWordKind() failed: %v", err)
 		}
@@ -215,9 +215,9 @@ func TestChangeWordKind(t *testing.T) {
 		if word.Kind != "prefix" {
 			t.Errorf("returned kind = %q, want %q", word.Kind, "prefix")
 		}
-		stored, err := f.store.GetWord(ctx, f.user, ailo)
+		stored, err := f.store.Word(t.Context(), f.user, ailo)
 		if err != nil {
-			t.Fatalf("GetWord() failed: %v", err)
+			t.Fatalf("Word() failed: %v", err)
 		}
 		if stored.Kind != "prefix" {
 			t.Errorf("stored kind = %q, want %q", stored.Kind, "prefix")
@@ -237,14 +237,14 @@ func TestChangeWordKind(t *testing.T) {
 		ailo := f.word(t, "con", "ailo", "root")
 		f.translation(t, mer, ailo, "manual")
 
-		_, err := f.store.ChangeWordKind(ctx, f.user, mer, "prefix")
+		_, err := f.store.ChangeWordKind(t.Context(), f.user, mer, "prefix")
 		if exists, ok := errors.AsType[*storage.WordExistsError](err); !ok || exists.ExistingID != merPrefix {
 			t.Fatalf("ChangeWordKind() error = %v, want a WordExistsError for %d", err, merPrefix)
 		}
 
-		stored, err := f.store.GetWord(ctx, f.user, mer)
+		stored, err := f.store.Word(t.Context(), f.user, mer)
 		if err != nil {
-			t.Fatalf("GetWord() failed: %v", err)
+			t.Fatalf("Word() failed: %v", err)
 		}
 		if stored.Kind != "root" {
 			t.Errorf("stored kind = %q, want %q", stored.Kind, "root")

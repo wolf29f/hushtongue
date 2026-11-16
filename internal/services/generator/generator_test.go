@@ -2,8 +2,8 @@ package generator_test
 
 import (
 	"errors"
-	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/wolf29f/hushtongue/internal/services/generator"
@@ -69,7 +69,7 @@ func TestGenerateExhausted(t *testing.T) {
 }
 
 func TestGenerateShapes(t *testing.T) {
-	isVowel := func(c byte) bool { return slices.Contains(generator.Vowels, c) }
+	isVowel := func(c byte) bool { return strings.IndexByte("aeiou", c) >= 0 }
 	for i := range 1000 {
 		source := "w" + strconv.Itoa(i)
 		prefix, _ := generator.Generate(source, generator.KindPrefix, free)

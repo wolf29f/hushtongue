@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/wolf29f/hushtongue/internal/config"
@@ -145,32 +146,32 @@ func TestLogin(t *testing.T) {
 	}
 
 	t.Run("limits the attempts per IP", func(t *testing.T) {
-		h := New(testConfig, newFakeStore())
-		now := time.Now()
-		h.loginLimiter = newLimiter(loginAttempts, loginPeriod, func() time.Time { return now })
-		attempt := func(forwardedFor string) *httptest.ResponseRecorder {
-			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}"))
-			r.Header.Set("X-Forwarded-For", forwardedFor)
-			w := httptest.NewRecorder()
-			h.Login(w, r)
-			return w
-		}
-
-		for i := range loginAttempts {
-			// Forging the first entry doesn't give more attempts
-			if w := attempt(string(rune('a'+i)) + ", 203.0.113.1"); w.Code == http.StatusTooManyRequests {
-				t.Fatalf("attempt %d refused", i+1)
+		synctest.Test(t, func(t *testing.T) {
+			h := New(testConfig, newFakeStore())
+			attempt := func(forwardedFor string) *httptest.ResponseRecorder {
+				r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}"))
+				r.Header.Set("X-Forwarded-For", forwardedFor)
+				w := httptest.NewRecorder()
+				h.Login(w, r)
+				return w
 			}
-		}
-		w := attempt("203.0.113.1")
-		if retry := w.Header().Get("Retry-After"); retry != "60" {
-			t.Errorf("Retry-After = %q, want 60", retry)
-		}
-		assertError(t, w, http.StatusTooManyRequests, httpapi.CodeTooManyAttempts)
 
-		if w := attempt("203.0.113.2"); w.Code == http.StatusTooManyRequests {
-			t.Error("attempt from another IP refused")
-		}
+			for i := range loginAttempts {
+				// Forging the first entry doesn't give more attempts
+				if w := attempt(string(rune('a'+i)) + ", 203.0.113.1"); w.Code == http.StatusTooManyRequests {
+					t.Fatalf("attempt %d refused", i+1)
+				}
+			}
+			w := attempt("203.0.113.1")
+			if retry := w.Header().Get("Retry-After"); retry != "60" {
+				t.Errorf("Retry-After = %q, want 60", retry)
+			}
+			assertError(t, w, http.StatusTooManyRequests, httpapi.CodeTooManyAttempts)
+
+			if w := attempt("203.0.113.2"); w.Code == http.StatusTooManyRequests {
+				t.Error("attempt from another IP refused")
+			}
+		})
 	})
 }
 
@@ -279,24 +280,32 @@ func TestLinkLogin(t *testing.T) {
 }
 
 func TestPurgeSessions(t *testing.T) {
-	store := newFakeStore()
-	h := New(testConfig, store)
-	session(t, store, login(t, h)).expiresIn = -time.Second
-	ctx, cancel := context.WithCancel(context.Background())
-	stopped := make(chan struct{})
-	go func() {
-		h.PurgeSessions(ctx)
-		close(stopped)
-	}()
+	synctest.Test(t, func(t *testing.T) {
+		store := newFakeStore()
+		h := New(testConfig, store)
+		login(t, h)
+		store.expireSessions()
+		ctx, cancel := context.WithCancel(t.Context())
+		stopped := make(chan struct{})
+		go func() {
+			h.PurgeSessions(ctx)
+			close(stopped)
+		}()
 
-	deadline := time.Now().Add(5 * time.Second)
-	for store.sessionCount() != 0 {
-		if time.Now().After(deadline) {
+		synctest.Wait()
+		if store.sessionCount() != 0 {
 			t.Fatal("expired session not purged at start")
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
 
-	cancel()
-	<-stopped
+		login(t, h)
+		store.expireSessions()
+		time.Sleep(purgeInterval)
+		synctest.Wait()
+		if store.sessionCount() != 0 {
+			t.Fatal("expired session not purged a day later")
+		}
+
+		cancel()
+		<-stopped
+	})
 }

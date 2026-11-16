@@ -31,8 +31,8 @@ type Sessions struct {
 	store        Store
 }
 
-// New creates the middlewares on top of store.
-func New(cfg config.Config, store Store) *Sessions {
+// NewSessions creates the session middlewares on top of store.
+func NewSessions(cfg config.Config, store Store) *Sessions {
 	return &Sessions{secureCookie: cfg.SecureCookies(), store: store}
 }
 

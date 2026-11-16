@@ -19,7 +19,7 @@ func TestListTranslations(t *testing.T) {
 		merAilo := f.translation(t, mer, ailo, "manual")
 		cielAilo := f.translation(t, ciel, ailo, "manual")
 
-		got, err := f.store.ListTranslations(ctx, f.user, mer)
+		got, err := f.store.ListTranslations(t.Context(), f.user, mer)
 		if err != nil {
 			t.Fatalf("ListTranslations() failed: %v", err)
 		}
@@ -31,7 +31,7 @@ func TestListTranslations(t *testing.T) {
 			t.Errorf("ListTranslations(mer) = %v, want %v", got, want)
 		}
 
-		got, err = f.store.ListTranslations(ctx, f.user, ailo)
+		got, err = f.store.ListTranslations(t.Context(), f.user, ailo)
 		if err != nil {
 			t.Fatalf("ListTranslations() failed: %v", err)
 		}
@@ -54,7 +54,7 @@ func TestListTranslationsByLanguage(t *testing.T) {
 		merAilo := f.translation(t, mer, ailo, "manual")
 		merVora := f.translation(t, mer, vora, "manual")
 
-		got, err := f.store.ListTranslationsByLanguage(ctx, f.user, storage.LangCon)
+		got, err := f.store.ListTranslationsByLanguage(t.Context(), f.user, storage.LangCon)
 		if err != nil {
 			t.Fatalf("ListTranslationsByLanguage() failed: %v", err)
 		}
@@ -77,7 +77,7 @@ func TestDeleteTranslation(t *testing.T) {
 		merAilo := f.translation(t, mer, ailo, "manual")
 		f.translation(t, ciel, ailo, "manual")
 
-		if err := f.store.DeleteTranslation(ctx, f.user, merAilo); err != nil {
+		if err := f.store.DeleteTranslation(t.Context(), f.user, merAilo); err != nil {
 			t.Fatalf("DeleteTranslation() failed: %v", err)
 		}
 
@@ -94,7 +94,7 @@ func TestDeleteTranslation(t *testing.T) {
 	t.Run("reports a missing link", func(t *testing.T) {
 		f := newFixture(t)
 
-		if err := f.store.DeleteTranslation(ctx, f.user, 1); !errors.Is(err, storage.ErrNotFound) {
+		if err := f.store.DeleteTranslation(t.Context(), f.user, 1); !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("DeleteTranslation() error = %v, want ErrNotFound", err)
 		}
 	})
@@ -106,7 +106,7 @@ func TestAddTranslation(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
 
-		if err := f.store.AddTranslation(ctx, f.user, mer, ailo); err != nil {
+		if err := f.store.AddTranslation(t.Context(), f.user, mer, ailo); err != nil {
 			t.Fatalf("AddTranslation() failed: %v", err)
 		}
 
@@ -119,7 +119,7 @@ func TestAddTranslation(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ailo := f.word(t, "con", "ailo", "root")
 
-		if err := f.store.AddTranslation(ctx, f.user, ailo, mer); err != nil {
+		if err := f.store.AddTranslation(t.Context(), f.user, ailo, mer); err != nil {
 			t.Fatalf("AddTranslation() failed: %v", err)
 		}
 
@@ -132,7 +132,7 @@ func TestAddTranslation(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		ciel := f.word(t, "source", "ciel", "root")
 
-		if err := f.store.AddTranslation(ctx, f.user, mer, ciel); !errors.Is(err, storage.ErrSameLanguage) {
+		if err := f.store.AddTranslation(t.Context(), f.user, mer, ciel); !errors.Is(err, storage.ErrSameLanguage) {
 			t.Fatalf("AddTranslation() error = %v, want ErrSameLanguage", err)
 		}
 		if got := f.countTranslations(t, mer); got != 0 {
@@ -146,7 +146,7 @@ func TestAddTranslation(t *testing.T) {
 		ailo := f.word(t, "con", "ailo", "root")
 		f.translation(t, mer, ailo, "generated")
 
-		if err := f.store.AddTranslation(ctx, f.user, mer, ailo); err != nil {
+		if err := f.store.AddTranslation(t.Context(), f.user, mer, ailo); err != nil {
 			t.Fatalf("AddTranslation() failed: %v", err)
 		}
 
@@ -160,7 +160,7 @@ func TestAddTranslationWord(t *testing.T) {
 		f := newFixture(t)
 		mer := f.word(t, "source", "mer", "root")
 
-		if err := f.store.AddTranslationWord(ctx, f.user, mer, "ailo"); err != nil {
+		if err := f.store.AddTranslationWord(t.Context(), f.user, mer, "ailo"); err != nil {
 			t.Fatalf("AddTranslationWord() failed: %v", err)
 		}
 
@@ -173,7 +173,7 @@ func TestAddTranslationWord(t *testing.T) {
 		f := newFixture(t)
 		ailo := f.word(t, "con", "ailo", "root")
 
-		if err := f.store.AddTranslationWord(ctx, f.user, ailo, "mer"); err != nil {
+		if err := f.store.AddTranslationWord(t.Context(), f.user, ailo, "mer"); err != nil {
 			t.Fatalf("AddTranslationWord() failed: %v", err)
 		}
 
@@ -187,7 +187,7 @@ func TestAddTranslationWord(t *testing.T) {
 		mer := f.word(t, "source", "mer", "root")
 		f.word(t, "con", "ailo", "root")
 
-		if err := f.store.AddTranslationWord(ctx, f.user, mer, "Ailo"); err != nil {
+		if err := f.store.AddTranslationWord(t.Context(), f.user, mer, "Ailo"); err != nil {
 			t.Fatalf("AddTranslationWord() failed: %v", err)
 		}
 
@@ -203,7 +203,7 @@ func TestSaveGeneratedTranslation(t *testing.T) {
 		ki := f.word(t, "con", "ki", "prefix")
 		f.translation(t, re, ki, "manual")
 
-		err := f.store.SaveGeneratedTranslation(ctx, f.user, refaite, []storage.TranslationPart{
+		err := f.store.SaveGeneratedTranslation(t.Context(), f.user, refaite, []storage.TranslationPart{
 			{Kind: "prefix", SourceID: re, Source: "re", ConID: ki, Con: "ki"},
 			{Kind: "root", Source: "faîte", Con: "mola"},
 		})
@@ -222,7 +222,7 @@ func TestSaveGeneratedTranslation(t *testing.T) {
 		f := newFixture(t)
 		mer := f.word(t, "source", "mer", "root")
 
-		err := f.store.SaveGeneratedTranslation(ctx, f.user, mer, []storage.TranslationPart{
+		err := f.store.SaveGeneratedTranslation(t.Context(), f.user, mer, []storage.TranslationPart{
 			{Kind: "root", SourceID: mer, Source: "mer", Con: "ailo"},
 		})
 		if err != nil {
@@ -238,7 +238,7 @@ func TestSaveGeneratedTranslation(t *testing.T) {
 		ailo := f.word(t, "con", "ailo", "root")
 		f.translation(t, mer, ailo, "manual")
 
-		err := f.store.SaveGeneratedTranslation(ctx, f.user, mer, []storage.TranslationPart{
+		err := f.store.SaveGeneratedTranslation(t.Context(), f.user, mer, []storage.TranslationPart{
 			{Kind: "root", SourceID: mer, Source: "mer", Con: "ailo"},
 		})
 		if err != nil {

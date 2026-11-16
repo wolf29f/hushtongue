@@ -8,8 +8,8 @@ import (
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 )
 
-// fakeStore keeps the users and sessions in memory. When err is set, every
-// call fails with it.
+// fakeStore keeps the users and sessions in memory, safe for the purge
+// goroutine. When err is set, every call fails with it.
 type fakeStore struct {
 	mu       sync.Mutex
 	gm       storage.User
@@ -32,10 +32,14 @@ func newFakeStore() *fakeStore {
 }
 
 func (s *fakeStore) GM(context.Context) (storage.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.gm, s.err
 }
 
 func (s *fakeStore) PlayerByLink(_ context.Context, linkHash []byte) (storage.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.err != nil {
 		return storage.User{}, s.err
 	}
@@ -47,6 +51,8 @@ func (s *fakeStore) PlayerByLink(_ context.Context, linkHash []byte) (storage.Us
 }
 
 func (s *fakeStore) CreateSession(_ context.Context, tokenHash []byte, userID int, lifetime time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.err != nil {
 		return s.err
 	}
@@ -61,6 +67,8 @@ func (s *fakeStore) CreateSession(_ context.Context, tokenHash []byte, userID in
 }
 
 func (s *fakeStore) DeleteSession(_ context.Context, tokenHash []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.err != nil {
 		return s.err
 	}
@@ -85,4 +93,12 @@ func (s *fakeStore) sessionCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.sessions)
+}
+
+func (s *fakeStore) expireSessions() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, session := range s.sessions {
+		session.expiresIn = -time.Second
+	}
 }

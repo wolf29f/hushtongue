@@ -15,11 +15,14 @@ const (
 	KindSuffix = "suffix"
 )
 
+// Word is a word, as listed in a dictionary.
 type Word struct {
 	ID   int
 	Text string
 }
 
+// WordDetails is a word of a dictionary with its language, normalized form
+// and kind.
 type WordDetails struct {
 	ID         int
 	Language   string // source or con
@@ -51,6 +54,7 @@ const (
 	RolePlayer = "player"
 )
 
+// User is the GM or a player.
 type User struct {
 	ID   int
 	Name string

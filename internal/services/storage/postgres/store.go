@@ -16,12 +16,10 @@ const (
 	uniqueViolation     = "23505"
 )
 
-// Store is the Postgres implementation of storage.Storage.
+// Store stores hushtongue's data in Postgres.
 type Store struct {
 	pool *pgxpool.Pool
 }
-
-var _ storage.Storage = (*Store)(nil)
 
 // New creates a store on top of pool.
 func New(pool *pgxpool.Pool) *Store {

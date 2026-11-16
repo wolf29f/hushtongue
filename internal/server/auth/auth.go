@@ -59,7 +59,7 @@ func New(cfg config.Config, store Store) *Handlers {
 		gmPassword:   cfg.GMPassword,
 		secureCookie: cfg.SecureCookies(),
 		store:        store,
-		loginLimiter: newLimiter(loginAttempts, loginPeriod, time.Now),
+		loginLimiter: newLimiter(loginAttempts, loginPeriod),
 	}
 }
 

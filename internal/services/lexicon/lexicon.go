@@ -1,3 +1,5 @@
+// Package lexicon tells what is known of the words typed in a language:
+// their translations, and the roots close to a word being typed.
 package lexicon
 
 import (
@@ -14,11 +16,13 @@ import (
 type Status int
 
 const (
-	// StatusUnknown: no root of the language has this normalized form.
+	// StatusUnknown means that no root of the language has this normalized
+	// form.
 	StatusUnknown Status = iota
-	// StatusUntranslated: the root exists but has no translation yet.
+	// StatusUntranslated means that the root exists but has no translation
+	// yet.
 	StatusUntranslated
-	// StatusTranslated: the root has at least one translation.
+	// StatusTranslated means that the root has at least one translation.
 	StatusTranslated
 )
 
@@ -183,7 +187,7 @@ func trigrams(word string) []string {
 	}
 	runes := []rune("  " + word)
 	grams := make([]string, 0, len(runes)-2)
-	for i := 0; i+3 <= len(runes); i++ {
+	for i := range len(runes) - 2 {
 		gram := string(runes[i : i+3])
 		if !slices.Contains(grams, gram) {
 			grams = append(grams, gram)

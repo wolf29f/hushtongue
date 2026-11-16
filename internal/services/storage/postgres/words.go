@@ -43,7 +43,8 @@ func (s *Store) ListWordDetails(ctx context.Context, userID int, language string
 	})
 }
 
-func (s *Store) GetWord(ctx context.Context, userID, id int) (storage.WordDetails, error) {
+// Word returns the user's word, or storage.ErrNotFound.
+func (s *Store) Word(ctx context.Context, userID, id int) (storage.WordDetails, error) {
 	word, err := scanWord(s.pool.QueryRow(ctx,
 		"SELECT id, lang, text, normalized, kind FROM words WHERE id = $1 AND user_id = $2",
 		id, userID,
@@ -143,7 +144,7 @@ func (s *Store) ChangeWordKind(ctx context.Context, userID, id int, kind string)
 		return notFoundIfNoRows(err)
 	})
 	if isViolation(err, uniqueViolation) {
-		current, getErr := s.GetWord(ctx, userID, id)
+		current, getErr := s.Word(ctx, userID, id)
 		if getErr != nil {
 			return storage.WordDetails{}, errors.Join(err, getErr)
 		}

@@ -10,7 +10,6 @@ import (
 type limiter struct {
 	limit  int
 	period time.Duration
-	now    func() time.Time
 
 	mu      sync.Mutex
 	windows map[string]window
@@ -21,8 +20,8 @@ type window struct {
 	attempts int
 }
 
-func newLimiter(limit int, period time.Duration, now func() time.Time) *limiter {
-	return &limiter{limit: limit, period: period, now: now, windows: make(map[string]window)}
+func newLimiter(limit int, period time.Duration) *limiter {
+	return &limiter{limit: limit, period: period, windows: make(map[string]window)}
 }
 
 // allow counts an attempt of key. It returns false, with the time to wait,
@@ -31,7 +30,7 @@ func (l *limiter) allow(key string) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	now := l.now()
+	now := time.Now()
 	for k, w := range l.windows {
 		if now.Sub(w.start) >= l.period {
 			delete(l.windows, k)

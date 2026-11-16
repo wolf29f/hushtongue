@@ -99,7 +99,7 @@ func TestRequireSession(t *testing.T) {
 	t.Run("passes the session's user", func(t *testing.T) {
 		store, cookie := newSession(gm, time.Hour)
 
-		w := serve(New(config.Config{}, store).RequireSession, cookie)
+		w := serve(NewSessions(config.Config{}, store).RequireSession, cookie)
 
 		if got := w.Body.String(); w.Code != http.StatusOK || got != `"mj"` {
 			t.Errorf("response = %d %s, want 200 mj", w.Code, got)
@@ -109,13 +109,13 @@ func TestRequireSession(t *testing.T) {
 	t.Run("requires a session", func(t *testing.T) {
 		store, _ := newSession(gm, time.Hour)
 
-		assertError(t, serve(New(config.Config{}, store).RequireSession), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
+		assertError(t, serve(NewSessions(config.Config{}, store).RequireSession), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
 	})
 
 	t.Run("refuses an unknown session", func(t *testing.T) {
 		store, _ := newSession(gm, time.Hour)
 
-		w := serve(New(config.Config{}, store).RequireSession, &http.Cookie{Name: auth.SessionCookie, Value: "nope"})
+		w := serve(NewSessions(config.Config{}, store).RequireSession, &http.Cookie{Name: auth.SessionCookie, Value: "nope"})
 
 		assertError(t, w, http.StatusUnauthorized, httpapi.CodeUnauthenticated)
 	})
@@ -123,7 +123,7 @@ func TestRequireSession(t *testing.T) {
 	t.Run("refuses an expired session", func(t *testing.T) {
 		store, cookie := newSession(gm, -time.Second)
 
-		w := serve(New(config.Config{}, store).RequireSession, cookie)
+		w := serve(NewSessions(config.Config{}, store).RequireSession, cookie)
 
 		assertError(t, w, http.StatusUnauthorized, httpapi.CodeUnauthenticated)
 	})
@@ -133,7 +133,7 @@ func TestSessionExtension(t *testing.T) {
 	t.Run("leaves a session extended less than a day ago", func(t *testing.T) {
 		store, cookie := newSession(gm, gmSessionLifetime-23*time.Hour)
 
-		w := serve(New(config.Config{}, store).RequireSession, cookie)
+		w := serve(NewSessions(config.Config{}, store).RequireSession, cookie)
 
 		if w.Code != http.StatusOK || sessionCookieOf(w) != nil {
 			t.Errorf("response = %d with cookie %v, want 200 without cookie", w.Code, sessionCookieOf(w))
@@ -146,7 +146,7 @@ func TestSessionExtension(t *testing.T) {
 	t.Run("extends a GM session after a day", func(t *testing.T) {
 		store, cookie := newSession(gm, gmSessionLifetime-25*time.Hour)
 
-		w := serve(New(config.Config{}, store).RequireSession, cookie)
+		w := serve(NewSessions(config.Config{}, store).RequireSession, cookie)
 
 		renewed := sessionCookieOf(w)
 		if w.Code != http.StatusOK || renewed == nil || renewed.Value != cookie.Value || !renewed.Secure ||
@@ -161,7 +161,7 @@ func TestSessionExtension(t *testing.T) {
 	t.Run("extends a player session after a day", func(t *testing.T) {
 		store, cookie := newSession(player, playerSessionLifetime-25*time.Hour)
 
-		w := serve(New(config.Config{}, store).RequireSession, cookie)
+		w := serve(NewSessions(config.Config{}, store).RequireSession, cookie)
 
 		renewed := sessionCookieOf(w)
 		if w.Code != http.StatusOK || renewed == nil || renewed.Value != cookie.Value ||
@@ -177,7 +177,7 @@ func TestSessionExtension(t *testing.T) {
 		store, cookie := newSession(gm, gmSessionLifetime-25*time.Hour)
 		cfg := config.Config{PublicURL: &url.URL{Scheme: "http", Host: "localhost:8080"}}
 
-		w := serve(New(cfg, store).RequireSession, cookie)
+		w := serve(NewSessions(cfg, store).RequireSession, cookie)
 
 		if renewed := sessionCookieOf(w); renewed == nil || renewed.Secure {
 			t.Errorf("renewed cookie = %+v, want it not Secure", renewed)
@@ -198,7 +198,7 @@ func TestRequireGM(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			store, cookie := newSession(tt.user, time.Hour)
 
-			if w := serve(New(config.Config{}, store).RequireGM, cookie); w.Code != tt.status {
+			if w := serve(NewSessions(config.Config{}, store).RequireGM, cookie); w.Code != tt.status {
 				t.Errorf("status = %d, want %d", w.Code, tt.status)
 			}
 		})
@@ -207,7 +207,7 @@ func TestRequireGM(t *testing.T) {
 	t.Run("no session", func(t *testing.T) {
 		store, _ := newSession(gm, time.Hour)
 
-		if w := serve(New(config.Config{}, store).RequireGM); w.Code != http.StatusUnauthorized {
+		if w := serve(NewSessions(config.Config{}, store).RequireGM); w.Code != http.StatusUnauthorized {
 			t.Errorf("status = %d, want 401", w.Code)
 		}
 	})
@@ -217,5 +217,5 @@ func TestRequireSessionDatabaseDown(t *testing.T) {
 	store, cookie := newSession(gm, time.Hour)
 	store.err = errors.New("database down")
 
-	assertError(t, serve(New(config.Config{}, store).RequireSession, cookie), http.StatusInternalServerError, httpapi.CodeInternal)
+	assertError(t, serve(NewSessions(config.Config{}, store).RequireSession, cookie), http.StatusInternalServerError, httpapi.CodeInternal)
 }

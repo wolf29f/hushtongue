@@ -1,9 +1,7 @@
 package server
 
 import (
-	"context"
 	"encoding/json/v2"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -41,7 +39,7 @@ func TestRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			New(testConfig, postgres.New(nil), slog.Default()).routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
+			New(testConfig, postgres.New(nil)).routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
 
 			if w.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
@@ -83,7 +81,7 @@ func TestCrossOrigin(t *testing.T) {
 				r.Header.Set(name, value)
 			}
 			w := httptest.NewRecorder()
-			New(testConfig, postgres.New(nil), slog.Default()).routes().ServeHTTP(w, r)
+			New(testConfig, postgres.New(nil)).routes().ServeHTTP(w, r)
 
 			if tt.denied {
 				assertError(t, w, http.StatusForbidden, httpapi.CodeCrossOrigin)
@@ -105,10 +103,10 @@ var testConfig = config.Config{
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	store := postgres.New(pgtest.New(t))
-	if err := store.SetGM(context.Background(), testConfig.GMUsername); err != nil {
+	if err := store.SetGM(t.Context(), testConfig.GMUsername); err != nil {
 		t.Fatalf("SetGM() failed: %v", err)
 	}
-	return New(testConfig, store, slog.Default())
+	return New(testConfig, store)
 }
 
 // serve sends the request to the server's routes, with a JSON Content-Type

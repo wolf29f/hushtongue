@@ -1,7 +1,6 @@
 package composer_test
 
 import (
-	"context"
 	"os"
 	"slices"
 	"testing"
@@ -160,11 +159,11 @@ func TestApply(t *testing.T) {
 		service := composer.New(f.store)
 
 		proposal := propose(t, f, word)[0]
-		if err := service.Apply(context.Background(), f.user, word, proposal); err != nil {
+		if err := service.Apply(t.Context(), f.user, word, proposal); err != nil {
 			t.Fatalf("Apply() failed: %v", err)
 		}
 
-		translations, err := f.store.ListTranslations(context.Background(), f.user, word)
+		translations, err := f.store.ListTranslations(t.Context(), f.user, word)
 		if err != nil {
 			t.Fatalf("ListTranslations() failed: %v", err)
 		}
@@ -176,7 +175,7 @@ func TestApply(t *testing.T) {
 
 func propose(t *testing.T, f *fixture, wordID int) []composer.Proposal {
 	t.Helper()
-	proposals, err := composer.New(f.store).Propose(context.Background(), f.user, wordID)
+	proposals, err := composer.New(f.store).Propose(t.Context(), f.user, wordID)
 	if err != nil {
 		t.Fatalf("Propose() failed: %v", err)
 	}
@@ -223,12 +222,12 @@ func newFixture(t *testing.T) *fixture {
 
 func addWord(t *testing.T, f *fixture, lang, text, kind string) int {
 	t.Helper()
-	word, err := f.store.AddWord(context.Background(), f.user, lang, text)
+	word, err := f.store.AddWord(t.Context(), f.user, lang, text)
 	if err != nil {
 		t.Fatalf("adding word %q: %v", text, err)
 	}
 	if kind != storage.KindRoot {
-		if _, err := f.store.ChangeWordKind(context.Background(), f.user, word.ID, kind); err != nil {
+		if _, err := f.store.ChangeWordKind(t.Context(), f.user, word.ID, kind); err != nil {
 			t.Fatalf("changing kind of %q: %v", text, err)
 		}
 	}
@@ -237,7 +236,7 @@ func addWord(t *testing.T, f *fixture, lang, text, kind string) int {
 
 func link(t *testing.T, f *fixture, sourceID, conID int) {
 	t.Helper()
-	if _, err := f.pool.Exec(context.Background(),
+	if _, err := f.pool.Exec(t.Context(),
 		`INSERT INTO translations (user_id, source_word_id, con_word_id) VALUES ($1, $2, $3)`,
 		f.user, sourceID, conID,
 	); err != nil {

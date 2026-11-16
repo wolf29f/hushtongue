@@ -53,7 +53,7 @@ Hors périmètre : interface en anglais, partage de textes entre utilisateurs (l
 
 ## Isolation entre utilisateurs
 
-- L'utilisateur est un paramètre explicite de chaque appel, après le `context.Context` : `storage.Storage` (`GetWord(ctx, userID, id)`, `DeleteTranslation(ctx, userID, id)`, `MergeWords(ctx, userID, fromID, intoID)`…), `lexicon.Load(ctx, d, userID, lang)`, `composer.Propose(ctx, userID, wordID)`, etc. Le serveur le prend dans la session.
+- L'utilisateur est un paramètre explicite de chaque appel, après le `context.Context` : le store Postgres (`Word(ctx, userID, id)`, `DeleteTranslation(ctx, userID, id)`, `MergeWords(ctx, userID, fromID, intoID)`…), `lexicon.Load(ctx, d, userID, lang)`, `composer.Propose(ctx, userID, wordID)`, etc. Le serveur le prend dans la session.
 - Toute requête SQL filtre par `user_id`, y compris celles par id : un id d'un autre utilisateur est traité comme inexistant (`storage.ErrNotFound`, comme un id qui n'existe pas).
 - Tests requis : pour chaque méthode prenant un id, l'utilisateur A ne peut ni lire ni modifier un mot, une traduction ou un texte de B.
 

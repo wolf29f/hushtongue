@@ -1,3 +1,5 @@
+// Package generator generates con words, deterministically from their source
+// word.
 package generator
 
 import (
@@ -10,8 +12,8 @@ import (
 // Open syllables (CV or V), soft sounds, no hard stop consonants
 // (b/d/g/p deliberately excluded).
 var (
-	Consonants = []byte{'m', 'n', 'l', 'r', 's', 'h', 'v', 'k', 't'}
-	Vowels     = []byte{'a', 'e', 'i', 'o', 'u'}
+	consonants = []byte{'m', 'n', 'l', 'r', 's', 'h', 'v', 'k', 't'}
+	vowels     = []byte{'a', 'e', 'i', 'o', 'u'}
 )
 
 // Kind distinguishes the kind of word to generate, which constrains its
@@ -19,6 +21,7 @@ var (
 // syllable, sometimes 2) so they stay light once attached to a root.
 type Kind int
 
+// Kinds of words.
 const (
 	KindRoot Kind = iota
 	KindPrefix
@@ -48,7 +51,7 @@ func (s *splitmix32) next() uint32 {
 	z := s.state
 	z = (z ^ (z >> 16)) * 0x85ebca6b
 	z = (z ^ (z >> 13)) * 0xc2b2ae35
-	z = z ^ (z >> 16)
+	z ^= z >> 16
 	return z
 }
 
@@ -84,18 +87,18 @@ func buildFromSeed(seed uint32, kind Kind) string {
 
 	var word []byte
 	var lastVowel byte
-	for i := 0; i < syllableCount; i++ {
+	for i := range syllableCount {
 		startsWithConsonant := rng.intn(100) < 85
 		if kind == KindSuffix && i == 0 {
 			// Attachment constraint of a suffix, not a dice roll
 			startsWithConsonant = true
 		}
 		if startsWithConsonant {
-			word = append(word, Consonants[rng.intn(len(Consonants))])
+			word = append(word, consonants[rng.intn(len(consonants))])
 		}
 		var v byte
 		for {
-			v = Vowels[rng.intn(len(Vowels))]
+			v = vowels[rng.intn(len(vowels))]
 			if v != lastVowel {
 				break
 			}

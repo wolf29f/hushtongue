@@ -24,7 +24,7 @@ func TestLocalAddr(t *testing.T) {
 
 func TestHealthcheck(t *testing.T) {
 	t.Run("succeeds on 200", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		defer srv.Close()
 
 		if err := healthcheck(strings.TrimPrefix(srv.URL, "http://")); err != nil {
@@ -33,7 +33,7 @@ func TestHealthcheck(t *testing.T) {
 	})
 
 	t.Run("fails on 503", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}))
 		defer srv.Close()

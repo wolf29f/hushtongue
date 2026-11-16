@@ -30,7 +30,6 @@ const (
 
 // Server holds the handlers of each feature.
 type Server struct {
-	logger   *slog.Logger
 	sessions *middleware.Sessions
 	auth     *auth.Handlers
 	health   *health.Handlers
@@ -39,10 +38,9 @@ type Server struct {
 }
 
 // New creates the server on top of store.
-func New(cfg config.Config, store *postgres.Store, logger *slog.Logger) *Server {
+func New(cfg config.Config, store *postgres.Store) *Server {
 	return &Server{
-		logger:   logger,
-		sessions: middleware.New(cfg, store),
+		sessions: middleware.NewSessions(cfg, store),
 		auth:     auth.New(cfg, store),
 		health:   health.New(store),
 		settings: settings.New(cfg),
@@ -59,7 +57,7 @@ func (s *Server) HTTPServer(addr string) *http.Server {
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
-		ErrorLog:          slog.NewLogLogger(s.logger.Handler(), slog.LevelError),
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 	}
 }
 

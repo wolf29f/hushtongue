@@ -1,7 +1,6 @@
 package postgres_test
 
 import (
-	"context"
 	"errors"
 	"os"
 	"testing"
@@ -17,13 +16,13 @@ func TestMain(m *testing.M) {
 }
 
 func TestOpen(t *testing.T) {
-	pool, err := postgres.Open(context.Background(), pgtest.URL(t))
+	pool, err := postgres.Open(t.Context(), pgtest.URL(t))
 	if err != nil {
 		t.Fatalf("Open() failed: %v", err)
 	}
 	defer pool.Close()
 
-	if err := pool.Ping(context.Background()); err != nil {
+	if err := pool.Ping(t.Context()); err != nil {
 		t.Errorf("Ping() failed: %v", err)
 	}
 }
@@ -32,7 +31,7 @@ func TestMigrate(t *testing.T) {
 	t.Run("is idempotent", func(t *testing.T) {
 		pool := pgtest.New(t)
 
-		if err := postgres.Migrate(context.Background(), pool); err != nil {
+		if err := postgres.Migrate(t.Context(), pool); err != nil {
 			t.Errorf("second Migrate() failed: %v", err)
 		}
 	})
@@ -41,14 +40,14 @@ func TestMigrate(t *testing.T) {
 		pool := pgtest.New(t)
 		exec(t, pool, `INSERT INTO users (name, role) VALUES ('mj', 'gm')`)
 
-		err := execErr(pool, `INSERT INTO users (name, role) VALUES ('mj2', 'gm')`)
+		err := execErr(t, pool, `INSERT INTO users (name, role) VALUES ('mj2', 'gm')`)
 		assertViolation(t, err, "23505") // unique_violation
 	})
 
 	t.Run("gives no magic link to the GM", func(t *testing.T) {
 		pool := pgtest.New(t)
 
-		err := execErr(pool, `INSERT INTO users (name, role, login_token_hash) VALUES ('mj', 'gm', '\x01')`)
+		err := execErr(t, pool, `INSERT INTO users (name, role, login_token_hash) VALUES ('mj', 'gm', '\x01')`)
 		assertViolation(t, err, "23514") // check_violation
 	})
 
@@ -59,7 +58,7 @@ func TestMigrate(t *testing.T) {
 			(1, 1, 'source', 'mer', 'mer'),
 			(2, 2, 'con', 'ailo', 'ailo')`)
 
-		err := execErr(pool, `INSERT INTO translations (user_id, source_word_id, con_word_id) VALUES (1, 1, 2)`)
+		err := execErr(t, pool, `INSERT INTO translations (user_id, source_word_id, con_word_id) VALUES (1, 1, 2)`)
 		assertViolation(t, err, "23503") // foreign_key_violation
 	})
 
@@ -76,7 +75,7 @@ func TestMigrate(t *testing.T) {
 		exec(t, pool, `DELETE FROM users WHERE id = 1`)
 
 		var count int
-		if err := pool.QueryRow(context.Background(), `SELECT
+		if err := pool.QueryRow(t.Context(), `SELECT
 			(SELECT count(*) FROM words) + (SELECT count(*) FROM translations) +
 			(SELECT count(*) FROM texts) + (SELECT count(*) FROM sessions)`).Scan(&count); err != nil {
 			t.Fatalf("counting rows: %v", err)
@@ -89,13 +88,14 @@ func TestMigrate(t *testing.T) {
 
 func exec(t *testing.T, pool *pgxpool.Pool, sql string) {
 	t.Helper()
-	if err := execErr(pool, sql); err != nil {
+	if err := execErr(t, pool, sql); err != nil {
 		t.Fatalf("%s: %v", sql, err)
 	}
 }
 
-func execErr(pool *pgxpool.Pool, sql string) error {
-	_, err := pool.Exec(context.Background(), sql)
+func execErr(t *testing.T, pool *pgxpool.Pool, sql string) error {
+	t.Helper()
+	_, err := pool.Exec(t.Context(), sql)
 	return err
 }
 

@@ -1,7 +1,6 @@
 package lexicon_test
 
 import (
-	"context"
 	"os"
 	"slices"
 	"testing"
@@ -126,7 +125,7 @@ func TestComplete(t *testing.T) {
 
 func load(t *testing.T, f *fixture, language string) *lexicon.Lexicon {
 	t.Helper()
-	l, err := lexicon.Load(context.Background(), f.store, f.user, language)
+	l, err := lexicon.Load(t.Context(), f.store, f.user, language)
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
 	}
@@ -163,12 +162,12 @@ func newFixture(t *testing.T) *fixture {
 
 func addWord(t *testing.T, f *fixture, lang, text, kind string) int {
 	t.Helper()
-	word, err := f.store.AddWord(context.Background(), f.user, lang, text)
+	word, err := f.store.AddWord(t.Context(), f.user, lang, text)
 	if err != nil {
 		t.Fatalf("adding word %q: %v", text, err)
 	}
 	if kind != storage.KindRoot {
-		if _, err := f.store.ChangeWordKind(context.Background(), f.user, word.ID, kind); err != nil {
+		if _, err := f.store.ChangeWordKind(t.Context(), f.user, word.ID, kind); err != nil {
 			t.Fatalf("changing kind of %q: %v", text, err)
 		}
 	}
@@ -177,7 +176,7 @@ func addWord(t *testing.T, f *fixture, lang, text, kind string) int {
 
 func link(t *testing.T, f *fixture, sourceID, conID int) {
 	t.Helper()
-	if _, err := f.pool.Exec(context.Background(),
+	if _, err := f.pool.Exec(t.Context(),
 		`INSERT INTO translations (user_id, source_word_id, con_word_id) VALUES ($1, $2, $3)`,
 		f.user, sourceID, conID,
 	); err != nil {

@@ -34,17 +34,16 @@ func main() {
 		return
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
-	if err := run(logger); err != nil {
-		logger.Error("Server failed", "error", err)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	if err := run(); err != nil {
+		slog.Error("Server failed", "error", err)
 		os.Exit(1)
 	}
 }
 
 // run serves until SIGINT or SIGTERM, then lets the requests in progress
 // finish.
-func run(logger *slog.Logger) error {
+func run() error {
 	cfg, err := config.Load(nil)
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
@@ -67,13 +66,13 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("setting up the GM: %w", err)
 	}
 
-	app := server.New(cfg, store, logger)
+	app := server.New(cfg, store)
 	go app.PurgeSessions(ctx)
 
 	srv := app.HTTPServer(cfg.Addr)
 	served := make(chan error, 1)
 	go func() {
-		logger.Info("Server listening", "addr", cfg.Addr, "version", config.Version)
+		slog.Info("Server listening", "addr", cfg.Addr, "version", config.Version)
 		served <- srv.ListenAndServe()
 	}()
 
@@ -83,7 +82,7 @@ func run(logger *slog.Logger) error {
 	case <-ctx.Done():
 	}
 
-	logger.Info("Server shutting down")
+	slog.Info("Server shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
