@@ -1,4 +1,5 @@
-// Package server serves the hushtongue API.
+// Package server serves the hushtongue API: it wires the handlers of each
+// feature to their routes.
 package server
 
 import (
@@ -8,6 +9,11 @@ import (
 	"time"
 
 	"github.com/wolf29f/hushtongue/internal/config"
+	"github.com/wolf29f/hushtongue/internal/server/auth"
+	"github.com/wolf29f/hushtongue/internal/server/health"
+	"github.com/wolf29f/hushtongue/internal/server/httpapi"
+	"github.com/wolf29f/hushtongue/internal/server/players"
+	"github.com/wolf29f/hushtongue/internal/server/settings"
 	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
 )
 
@@ -20,25 +26,25 @@ const (
 	// maxBodySize is the limit of a request body, sized for the import of a
 	// v1 dictionary.
 	maxBodySize = 10 << 20 // 10 MB
-
-	purgeInterval = 24 * time.Hour
 )
 
-// Server holds the dependencies of the handlers.
+// Server holds the handlers of each feature.
 type Server struct {
-	cfg          config.Config
-	store        *postgres.Store
-	logger       *slog.Logger
-	loginLimiter *limiter
+	logger   *slog.Logger
+	auth     *auth.Handlers
+	health   *health.Handlers
+	settings *settings.Handlers
+	players  *players.Handlers
 }
 
 // New creates the server on top of store.
 func New(cfg config.Config, store *postgres.Store, logger *slog.Logger) *Server {
 	return &Server{
-		cfg:          cfg,
-		store:        store,
-		logger:       logger,
-		loginLimiter: newLimiter(loginAttempts, loginPeriod, time.Now),
+		logger:   logger,
+		auth:     auth.New(cfg, store),
+		health:   health.New(store),
+		settings: settings.New(cfg),
+		players:  players.New(cfg.PublicURL, store),
 	}
 }
 
@@ -58,41 +64,28 @@ func (s *Server) HTTPServer(addr string) *http.Server {
 // PurgeSessions deletes the expired sessions now, then once a day until ctx
 // is done.
 func (s *Server) PurgeSessions(ctx context.Context) {
-	ticker := time.NewTicker(purgeInterval)
-	defer ticker.Stop()
-	for {
-		purged, err := s.store.PurgeSessions(ctx)
-		if err != nil && ctx.Err() == nil {
-			s.logger.Error("Purging sessions failed", "error", err)
-		} else if purged > 0 {
-			s.logger.Info("Purged expired sessions", "count", purged)
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
+	s.auth.PurgeSessions(ctx)
 }
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health/live", s.handleLive)
-	mux.HandleFunc("GET /api/health/ready", s.handleReady)
-	mux.HandleFunc("GET /api/settings", s.handleSettings)
-	mux.HandleFunc("POST /api/login", s.handleLogin)
-	mux.HandleFunc("POST /api/logout", s.handleLogout)
-	mux.HandleFunc("POST /api/login/link", s.handleLinkLogin)
-	mux.HandleFunc("GET /api/me", s.requireSession(s.handleMe))
-	mux.HandleFunc("GET /api/players", s.requireGM(s.handleListPlayers))
-	mux.HandleFunc("POST /api/players", s.requireGM(s.handleCreatePlayer))
-	mux.HandleFunc("POST /api/players/{id}/link", s.requireGM(s.handleRegeneratePlayerLink))
-	mux.HandleFunc("DELETE /api/players/{id}", s.requireGM(s.handleDeletePlayer))
+	mux.HandleFunc("GET /api/health/live", s.health.Live)
+	mux.HandleFunc("GET /api/health/ready", s.health.Ready)
+	mux.HandleFunc("GET /api/settings", s.settings.Get)
+
+	mux.HandleFunc("POST /api/login", s.auth.Login)
+	mux.HandleFunc("POST /api/login/link", s.auth.LinkLogin)
+	mux.HandleFunc("POST /api/logout", s.auth.Logout)
+	mux.HandleFunc("GET /api/me", s.auth.RequireSession(s.auth.Me))
+
+	mux.HandleFunc("GET /api/players", s.auth.RequireGM(s.players.List))
+	mux.HandleFunc("POST /api/players", s.auth.RequireGM(s.players.Create))
+	mux.HandleFunc("POST /api/players/{id}/link", s.auth.RequireGM(s.players.RegenerateLink))
+	mux.HandleFunc("DELETE /api/players/{id}", s.auth.RequireGM(s.players.Delete))
 
 	crossOrigin := http.NewCrossOriginProtection()
 	crossOrigin.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusForbidden, codeCrossOrigin, "Requête d'un autre site refusée.")
+		httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeCrossOrigin, "Requête d'un autre site refusée.")
 	}))
-	return http.MaxBytesHandler(crossOrigin.Handler(apiHandler(mux)), maxBodySize)
+	return http.MaxBytesHandler(crossOrigin.Handler(httpapi.Handler(mux)), maxBodySize)
 }

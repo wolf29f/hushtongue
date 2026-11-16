@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/pgtest"
+	"github.com/wolf29f/hushtongue/internal/server/httpapi"
 	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
 )
 
@@ -30,6 +30,7 @@ func TestRoutes(t *testing.T) {
 		wantBody   string
 	}{
 		{"live", http.MethodGet, "/api/health/live", http.StatusOK, `{"status":"ok"}`},
+		{"settings", http.MethodGet, "/api/settings", http.StatusOK, `{"languages":{"source":"Français","con":"Ailo"}}`},
 		{"unknown route", http.MethodGet, "/api/nope", http.StatusNotFound,
 			`{"error":"not_found","message":"Ressource introuvable."}`},
 		{"wrong method", http.MethodPost, "/api/health/live", http.StatusMethodNotAllowed,
@@ -40,7 +41,7 @@ func TestRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			New(config.Config{}, postgres.New(nil), slog.Default()).routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
+			New(testConfig, postgres.New(nil), slog.Default()).routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
 
 			if w.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
@@ -48,7 +49,7 @@ func TestRoutes(t *testing.T) {
 			if got := w.Header().Get("Content-Type"); got != "application/json" {
 				t.Errorf("Content-Type = %q, want application/json", got)
 			}
-			if got := strings.TrimSpace(w.Body.String()); got != tt.wantBody {
+			if got := w.Body.String(); got != tt.wantBody {
 				t.Errorf("body = %s, want %s", got, tt.wantBody)
 			}
 		})
@@ -85,40 +86,11 @@ func TestCrossOrigin(t *testing.T) {
 			New(testConfig, postgres.New(nil), slog.Default()).routes().ServeHTTP(w, r)
 
 			if tt.denied {
-				assertError(t, w, http.StatusForbidden, codeCrossOrigin)
+				assertError(t, w, http.StatusForbidden, httpapi.CodeCrossOrigin)
 			} else if w.Code == http.StatusForbidden {
 				t.Errorf("status = 403, want the request through")
 			}
 		})
-	}
-}
-
-func TestIsJSON(t *testing.T) {
-	tests := map[string]bool{
-		"application/json":                  true,
-		"application/json; charset=utf-8":   true,
-		"Application/JSON":                  true,
-		"text/plain":                        false,
-		"application/x-www-form-urlencoded": false,
-		"":                                  false,
-	}
-	for contentType, want := range tests {
-		r := httptest.NewRequest(http.MethodPost, "/", nil)
-		r.Header.Set("Content-Type", contentType)
-		if got := isJSON(r); got != want {
-			t.Errorf("isJSON(%q) = %v, want %v", contentType, got, want)
-		}
-	}
-}
-
-func TestWriteError(t *testing.T) {
-	w := httptest.NewRecorder()
-	writeError(w, http.StatusNotFound, codeNotFound, "Ressource introuvable.")
-
-	var body apiError
-	decode(t, w, &body)
-	if w.Code != http.StatusNotFound || body != (apiError{Code: codeNotFound, Message: "Ressource introuvable."}) {
-		t.Errorf("writeError() = %d %+v", w.Code, body)
 	}
 }
 
@@ -129,16 +101,14 @@ var testConfig = config.Config{
 	ConLangLabel:    "Ailo",
 }
 
-// newTestServer returns a server with testConfig on a fresh database holding
-// the GM, and the database's pool.
-func newTestServer(t *testing.T, cfg config.Config) (*Server, *pgxpool.Pool) {
+// newTestServer returns a server on a fresh database holding the GM.
+func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	pool := pgtest.New(t)
-	store := postgres.New(pool)
-	if err := store.SetGM(context.Background(), cfg.GMUsername); err != nil {
+	store := postgres.New(pgtest.New(t))
+	if err := store.SetGM(context.Background(), testConfig.GMUsername); err != nil {
 		t.Fatalf("SetGM() failed: %v", err)
 	}
-	return New(cfg, store, slog.Default()), pool
+	return New(testConfig, store, slog.Default())
 }
 
 // serve sends the request to the server's routes, with a JSON Content-Type
@@ -156,7 +126,6 @@ func serve(s *Server, method, path, body string, cookies ...*http.Cookie) *httpt
 	return w
 }
 
-// decode decodes the response body into v.
 func decode(t *testing.T, w *httptest.ResponseRecorder, v any) {
 	t.Helper()
 	if err := json.UnmarshalRead(w.Body, v); err != nil {
@@ -164,53 +133,131 @@ func decode(t *testing.T, w *httptest.ResponseRecorder, v any) {
 	}
 }
 
-// assertError checks the status and code of an error response.
-func assertError(t *testing.T, w *httptest.ResponseRecorder, status int, code errorCode) {
+func assertError(t *testing.T, w *httptest.ResponseRecorder, status int, code httpapi.ErrorCode) {
 	t.Helper()
-	var body apiError
+	var body httpapi.Error
 	decode(t, w, &body)
 	if w.Code != status || body.Code != code {
 		t.Errorf("response = %d %s, want %d %s", w.Code, body.Code, status, code)
 	}
 }
 
-func TestPurgeSessions(t *testing.T) {
-	s, pool := newTestServer(t, testConfig)
-	setExpiresIn(t, pool, login(t, s), -time.Second)
-	ctx, cancel := context.WithCancel(context.Background())
-	stopped := make(chan struct{})
-	go func() {
-		s.PurgeSessions(ctx)
-		close(stopped)
-	}()
+// These tests go through the routes on Postgres: the wiring of the handlers,
+// which the features' tests on fakes can't check.
 
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		var count int
-		if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM sessions").Scan(&count); err != nil {
-			t.Fatalf("counting sessions: %v", err)
+const sessionCookie = "hushtongue_session"
+
+// sessionCookieOf returns the session cookie set by the response, or nil.
+func sessionCookieOf(w *httptest.ResponseRecorder) *http.Cookie {
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == sessionCookie {
+			return cookie
 		}
-		if count == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("expired session not purged at start")
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
-
-	cancel()
-	<-stopped
+	return nil
 }
 
-func TestReadJSON(t *testing.T) {
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name": "mj"}`))
-	w := httptest.NewRecorder()
-	r.Body = http.MaxBytesReader(w, r.Body, 4)
-
-	var body loginRequest
-	if readJSON(w, r, &body) {
-		t.Fatal("readJSON() = true, want false for a body over the limit")
+// login logs the GM in and returns the session cookie.
+func login(t *testing.T, s *Server) *http.Cookie {
+	t.Helper()
+	w := serve(s, http.MethodPost, "/api/login", `{"name": "mj", "password": "secret"}`)
+	cookie := sessionCookieOf(w)
+	if w.Code != http.StatusOK || cookie == nil {
+		t.Fatalf("login = %d %s, want 200 with a cookie", w.Code, w.Body)
 	}
-	assertError(t, w, http.StatusRequestEntityTooLarge, codeRequestTooLarge)
+	return cookie
+}
+
+type player struct {
+	ID   int    `json:"id"`
+	Link string `json:"link"`
+}
+
+// createPlayer creates the player as the GM.
+func createPlayer(t *testing.T, s *Server, gm *http.Cookie, name string) player {
+	t.Helper()
+	w := serve(s, http.MethodPost, "/api/players", `{"name": "`+name+`"}`, gm)
+	var created player
+	decode(t, w, &created)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("creating player = %d %s, want 201", w.Code, w.Body)
+	}
+	return created
+}
+
+// linkLogin logs in with the magic link.
+func linkLogin(s *Server, link string) *httptest.ResponseRecorder {
+	token := link[strings.LastIndex(link, "/")+1:]
+	return serve(s, http.MethodPost, "/api/login/link", `{"token": "`+token+`"}`)
+}
+
+func TestReady(t *testing.T) {
+	if w := serve(newTestServer(t), http.MethodGet, "/api/health/ready", ""); w.Code != http.StatusOK {
+		t.Errorf("ready = %d %s, want 200", w.Code, w.Body)
+	}
+}
+
+func TestPlayersRequireGM(t *testing.T) {
+	s := newTestServer(t)
+	created := createPlayer(t, s, login(t, s), "Ana")
+	playerCookie := sessionCookieOf(linkLogin(s, created.Link))
+	path := "/api/players/" + strconv.Itoa(created.ID)
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/players"},
+		{http.MethodPost, "/api/players"},
+		{http.MethodPost, path + "/link"},
+		{http.MethodDelete, path},
+	}
+	for _, route := range routes {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			assertError(t, serve(s, route.method, route.path, `{"name": "Bob"}`, playerCookie), http.StatusForbidden, httpapi.CodeForbidden)
+			assertError(t, serve(s, route.method, route.path, `{"name": "Bob"}`), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
+		})
+	}
+}
+
+// TestPlayerLifecycle follows a player from creation to deletion, through
+// their sessions and links.
+func TestPlayerLifecycle(t *testing.T) {
+	s := newTestServer(t)
+	gm := login(t, s)
+
+	if w := serve(s, http.MethodGet, "/api/me", "", gm); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"role":"gm"`) {
+		t.Fatalf("GM me = %d %s, want 200 gm", w.Code, w.Body)
+	}
+
+	created := createPlayer(t, s, gm, "Ana")
+	assertError(t, serve(s, http.MethodPost, "/api/players", `{"name": "mj"}`, gm), http.StatusConflict, httpapi.CodeNameTaken)
+
+	oldSession := sessionCookieOf(linkLogin(s, created.Link))
+	if w := serve(s, http.MethodGet, "/api/me", "", oldSession); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"name":"Ana"`) {
+		t.Fatalf("player me = %d %s, want 200 Ana", w.Code, w.Body)
+	}
+
+	w := serve(s, http.MethodPost, "/api/players/"+strconv.Itoa(created.ID)+"/link", "{}", gm)
+	var regenerated player
+	decode(t, w, &regenerated)
+	if w.Code != http.StatusOK {
+		t.Fatalf("regenerate = %d, want 200", w.Code)
+	}
+	assertError(t, serve(s, http.MethodGet, "/api/me", "", oldSession), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
+	assertError(t, linkLogin(s, created.Link), http.StatusUnauthorized, httpapi.CodeInvalidLink)
+	newSession := sessionCookieOf(linkLogin(s, regenerated.Link))
+	if newSession == nil {
+		t.Fatal("login with the new link refused")
+	}
+
+	if w := serve(s, http.MethodDelete, "/api/players/"+strconv.Itoa(created.ID), "{}", gm); w.Code != http.StatusNoContent {
+		t.Fatalf("delete = %d, want 204", w.Code)
+	}
+	assertError(t, serve(s, http.MethodGet, "/api/me", "", newSession), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
+
+	if w := serve(s, http.MethodPost, "/api/logout", "{}", gm); w.Code != http.StatusNoContent {
+		t.Fatalf("logout = %d, want 204", w.Code)
+	}
+	assertError(t, serve(s, http.MethodGet, "/api/me", "", gm), http.StatusUnauthorized, httpapi.CodeUnauthenticated)
 }

@@ -147,7 +147,10 @@ hushtongue/
 ├── cmd/server/main.go      # lit la config, ouvre Postgres, lance le serveur
 ├── internal/
 │   ├── config/             # variables d'env (remplace le build tag gm)
-│   ├── server/             # HTTP : routes, handlers, auth, sessions, middlewares
+│   ├── server/             # HTTP : table des routes (server.go)
+│   │   ├── httpapi/        # commun : JSON, format d'erreur, contrôle du Content-Type
+│   │   ├── auth/           # sessions, login, middlewares RequireSession et RequireGM
+│   │   └── players/, health/, settings/, words/…  # un paquet par fonctionnalité
 │   └── services/           # métier : generator, lexicon, composer
 │       └── storage/
 │           ├── storage.go
@@ -171,12 +174,13 @@ hushtongue/
 - En dev : `go run ./cmd/server` et `npm run dev` dans `web/`. Vite transmet `/api` au serveur Go ; le cookie reste sur la même origine, sans CORS.
 - Pas d'outillage monorepo (un seul paquet JS), pas de génération de types depuis Go pour l'instant.
 - Serveur HTTP : bibliothèque standard (`net/http`, routage par motifs, `encoding/json/v2`, actif par défaut depuis Go 1.27), `pgx/v5` pour Postgres.
-- Organisation de `internal/server` : un seul paquet, un fichier par fonctionnalité (`health.go`, `auth.go`, `players.go`, `words.go`, `translations.go`, `generation.go`, `translate.go`, `texts.go`, `import.go`) avec son fichier de test, plus `server.go`, `errors.go` et `middleware.go`.
-  - Une struct `Server` porte les dépendances (config, storage, services, logger) ; les handlers sont ses méthodes, sans variable globale.
-  - Une seule table des routes dans `server.go`, avec le middleware de chaque route (`requireSession`, `requireGM`).
+- Organisation de `internal/server` : un sous-paquet par fonctionnalité (`auth`, `players`, `health`, `settings`, puis `words`, `translations`, `generation`, `translate`, `texts`, `import`), plus `httpapi` pour ce qu'ils partagent (lecture et écriture JSON, format d'erreur, `PathID`, contrôle du `Content-Type` et réponses 404/405 en JSON).
+  - Chaque fonctionnalité a une struct `Handlers` créée par `New`, dont les méthodes sont les handlers, sans variable globale. Ses dépendances sont des interfaces déclarées dans le paquet, réduites aux méthodes qu'il appelle (`players.Store`, `health.Pinger`…) : un handler ne voit que ce dont il a besoin, et ses tests passent de petits faux écrits à la main, sans Postgres.
+  - `httpapi` n'importe aucune fonctionnalité ; une fonctionnalité peut en importer une autre pour un helper (`players` utilise `auth.NewToken` et `auth.HashToken`), sans cycle.
+  - Une seule table des routes dans `server.go`, avec le middleware de chaque route (`auth.RequireSession`, `auth.RequireGM`). `server.New` passe le `*postgres.Store` à chaque `New`, ce qui vérifie à la compilation qu'il satisfait leurs interfaces.
   - Handlers fins : lire la requête, appeler le service, écrire la réponse ; la logique métier reste dans `internal/services`.
-  - Les services renvoient des erreurs sentinelles (`storage.ErrNotFound`…), converties en code HTTP et `apiError` par une seule fonction de `errors.go`.
-  - Si le paquet grossit, les helpers et middlewares passent dans un paquet commun exporté et chaque fonctionnalité devient un sous-paquet.
+  - Les services renvoient des erreurs sentinelles (`storage.ErrNotFound`…), converties en code HTTP et `httpapi.Error` par une seule fonction, `httpapi.WriteServiceError`.
+  - Tests en deux couches : chaque fonctionnalité sur ses faux ; `internal/server` sur Postgres à travers la table des routes, pour le câblage (routes réservées au MJ, CSRF, 404/405) et un parcours complet (login, création d'un joueur, connexion par lien, régénération, suppression).
 - Dockerfile en trois étapes : build Node du front, build Go, image finale minimale avec le seul binaire. Le HTTPS est assuré par le reverse proxy.
 - Santé, sans authentification :
   - `GET /api/health/live` : `200` dès que le serveur répond, sans regarder la base. Un redémarrage n'y changerait rien quand Postgres est indisponible.
