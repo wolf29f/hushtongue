@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/wolf29f/hushtongue/internal/config"
 	"github.com/wolf29f/hushtongue/internal/pgtest"
@@ -39,7 +40,7 @@ func TestRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			New(testConfig, postgres.New(nil)).routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
+			New(testConfig, postgres.New(nil), testFront).routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
 
 			if w.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
@@ -81,7 +82,7 @@ func TestCrossOrigin(t *testing.T) {
 				r.Header.Set(name, value)
 			}
 			w := httptest.NewRecorder()
-			New(testConfig, postgres.New(nil)).routes().ServeHTTP(w, r)
+			New(testConfig, postgres.New(nil), testFront).routes().ServeHTTP(w, r)
 
 			if tt.denied {
 				assertError(t, w, http.StatusForbidden, httpapi.CodeCrossOrigin)
@@ -90,6 +91,37 @@ func TestCrossOrigin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFrontRoutes(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+		wantBody   string
+	}{
+		{"page of the front", http.MethodGet, "/login/abc", http.StatusOK, "index"},
+		{"asset", http.MethodGet, "/assets/app-1a.js", http.StatusOK, "app"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			New(testConfig, postgres.New(nil), testFront).routes().ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+			if got := w.Body.String(); got != tt.wantBody {
+				t.Errorf("body = %q, want %q", got, tt.wantBody)
+			}
+		})
+	}
+}
+
+var testFront = fstest.MapFS{
+	"index.html":       {Data: []byte("index")},
+	"assets/app-1a.js": {Data: []byte("app")},
 }
 
 var testConfig = config.Config{
@@ -106,7 +138,7 @@ func newTestServer(t *testing.T) *Server {
 	if err := store.SetGM(t.Context(), testConfig.GMUsername); err != nil {
 		t.Fatalf("SetGM() failed: %v", err)
 	}
-	return New(testConfig, store)
+	return New(testConfig, store, testFront)
 }
 
 // serve sends the request to the server's routes, with a JSON Content-Type

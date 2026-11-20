@@ -2,6 +2,9 @@ module github.com/wolf29f/hushtongue
 
 go 1.27.1
 
+// npm packages may hold .go files, which would break go build ./...
+ignore ./web/node_modules
+
 require (
 	github.com/caarlos0/env/v11 v11.4.2
 	github.com/jackc/pgx/v5 v5.13.0

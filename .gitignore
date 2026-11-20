@@ -33,3 +33,5 @@ go.work.sum
 
 # Build directories
 dist/
+# Binary built by make build
+/hushtongue

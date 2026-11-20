@@ -1,4 +1,4 @@
-// Command server runs hushtongue. "server healthcheck" checks that a running
+// Command server runs hushtongue. "hushtongue healthcheck" checks that a running
 // server answers, for the Docker HEALTHCHECK.
 package main
 
@@ -17,6 +17,7 @@ import (
 	"github.com/wolf29f/hushtongue/internal/server"
 	"github.com/wolf29f/hushtongue/internal/services/storage"
 	"github.com/wolf29f/hushtongue/internal/services/storage/postgres"
+	"github.com/wolf29f/hushtongue/web"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -66,7 +67,7 @@ func run() error {
 		return fmt.Errorf("setting up the GM: %w", err)
 	}
 
-	app := server.New(cfg, store)
+	app := server.New(cfg, store, web.Dist())
 	go app.PurgeSessions(ctx)
 
 	srv := app.HTTPServer(cfg.Addr)

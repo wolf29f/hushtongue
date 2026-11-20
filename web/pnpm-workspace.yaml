@@ -1,0 +1,6 @@
+saveExact: true
+engineStrict: true
+
+allowBuilds:
+  # Optional macOS dependency, shipped prebuilt
+  fsevents: false

@@ -43,6 +43,14 @@ Both roles default to the language the user knows the least: the source language
 - Several translations of a word are shown in insertion order, without ranking.
 - Autocomplete uses an in-memory trigram index built from the user's dictionary: at a TTRPG's scale (a few thousand words), it isn't worth a database-side index.
 
+## Running with Docker
+
+```sh
+make up  # docker compose up -d --build --wait
+```
+
+`compose.yaml` runs Postgres and hushtongue, built from the `Dockerfile` with the front embedded, on http://localhost:8080, the GM logging in with `mj` and `password`. The credentials come from `.env`, ignored by git, that `make` copies from `.env.example` on its first run; both compose files read it. `make down` stops the service, keeping the database in its volume.
+
 ## Running from source
 
 ```sh
@@ -61,15 +69,30 @@ The server reads its configuration from the environment and refuses to start, li
 | `HUSHTONGUE_SOURCE_LANG_LABEL` | no       | `Français`                |
 | `HUSHTONGUE_CON_LANG_LABEL`    | no       | `conLang`                 |
 
-It logs JSON to the standard output and, on SIGINT or SIGTERM, lets the requests in progress finish before stopping. At startup, it applies the pending database migrations. `GET /api/health/live` answers as soon as it runs, `GET /api/health/ready` only when the database answers too; `server healthcheck` exits with 0 when the server listening on `HUSHTONGUE_ADDR` is ready, 1 otherwise.
+It logs JSON to the standard output and, on SIGINT or SIGTERM, lets the requests in progress finish before stopping. At startup, it applies the pending database migrations. `GET /api/health/live` answers as soon as it runs, `GET /api/health/ready` only when the database answers too; `hushtongue healthcheck` exits with 0 when the server listening on `HUSHTONGUE_ADDR` is ready, 1 otherwise.
 
-At startup, it also creates the GM's account, or renames it after `HUSHTONGUE_GM_USERNAME`, keeping its dictionary. The GM logs in with `HUSHTONGUE_GM_USERNAME` and `HUSHTONGUE_GM_PASSWORD`, at most 5 attempts per minute and per IP. Behind a reverse proxy, the client's IP is the last entry of `X-Forwarded-For`: the server must not be reachable without the proxy, which would let a client pick its IP. The session cookie is `Secure` unless `HUSHTONGUE_PUBLIC_URL` starts with `http://`, which local development over http needs (`HUSHTONGUE_PUBLIC_URL=http://localhost:8080`).
+At startup, it also creates the GM's account, or renames it after `HUSHTONGUE_GM_USERNAME`, keeping its dictionary. The GM logs in with `HUSHTONGUE_GM_USERNAME` and `HUSHTONGUE_GM_PASSWORD`, at most 5 attempts per minute and per IP. Behind a reverse proxy, the client's IP is the last entry of `X-Forwarded-For`: the server must not be reachable without the proxy, which would let a client pick its IP. The session cookie is `Secure` unless `HUSHTONGUE_PUBLIC_URL` starts with `http://`, which local development over http needs (`HUSHTONGUE_PUBLIC_URL=http://localhost:5173` with the front's dev server, see below).
 
 The server runs as a single instance: the login attempts are counted in memory, and so will be the cache of each user's lexicon. Running several instances would need the attempts in the database and the lexicon reloaded on each request.
+
+## Front
+
+The React front lives in `web/` (Vite, TypeScript, Tailwind CSS) and needs Node 26 and [pnpm](https://pnpm.io), which switches by itself to the version pinned in `package.json`. In development, Postgres runs alone from `compose.dev.yaml`, the Go server and the front's dev server on the host:
+
+```sh
+make db       # Postgres on localhost:5432
+make run      # the Go server on :8080, GM password: password
+make web-dev  # the front on http://localhost:5173
+```
+
+`make run` gives the Go server the dev server's address as public URL, so that the magic links point to the front and the session cookie isn't `Secure`; the dev server forwards `/api` to the Go server. Its variables come from `.env` and can be overridden on the command line (`make run HUSHTONGUE_GM_PASSWORD=…`). `make help` lists every target.
+
+A plain `go build` serves a page telling that the front isn't built, so that the Go code builds and tests without Node. `make build` builds the front, then the `hushtongue` binary with the front embedded (`go build -tags embed`), which serves the front's files, and `index.html` for any other path outside `/api`.
 
 ## Tests
 
 ```sh
+make check            # the Go tests, golangci-lint and the front's checks
 go test ./...         # everything, the Postgres tests in throwaway containers
 go test -short ./...  # without Docker, the Postgres tests skipped
 ```
@@ -79,4 +102,13 @@ The Postgres tests start one container per package with [testcontainers](https:/
 ```sh
 export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
+
+The front has its own checks, run from `web/`:
+
+```sh
+pnpm run typecheck     # tsc
+pnpm run lint          # oxlint
+pnpm run format:check  # oxfmt, pnpm run format to fix
+pnpm test              # vitest
 ```

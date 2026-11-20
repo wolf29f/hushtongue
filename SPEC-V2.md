@@ -130,11 +130,11 @@ Le découpage en jetons, `Normalize`, la recherche et la complétion restent uni
 
 ## Front
 
-- React, TypeScript, Vite. React Router pour les pages, `fetch` natif pour les appels à l'API, TanStack Query pour le cache des données serveur (états de chargement et d'erreur, rechargement après une modification). Versions épinglées et `npm ci` sur le lockfile. CSS modules, pas de bibliothèque de composants.
+- React, TypeScript 7 (le compilateur natif), Vite. React Router pour les pages, `fetch` natif pour les appels à l'API, TanStack Query pour le cache des données serveur (états de chargement et d'erreur, rechargement après une modification). pnpm comme gestionnaire de paquets, avec sa version épinglée dans `packageManager`, des versions de dépendances exactes et `pnpm install --frozen-lockfile` en CI ; son délai par défaut avant d'installer une version tout juste publiée est gardé, contre les paquets compromis. Tailwind CSS 4 pour les styles, pas de bibliothèque de composants.
 - Pages : Connexion, Traduction (accueil), Dictionnaire, Fiche du mot, Génération (MJ), Textes, Joueurs (MJ).
 - Raccourcis clavier de la v1 gardés quand ils ont un sens sur le web (navigation dans les suggestions, choix des traductions), chaque action restant faisable à la souris et au doigt.
 - Interface en français.
-- Outils : `tsc --noEmit`, ESLint et Prettier, l'équivalent de golangci-lint côté web ; Vitest pour la logique pure du front, pas de tests de bout en bout pour l'instant.
+- Outils : `tsc`, oxlint et oxfmt (avec le tri des classes Tailwind), l'équivalent de golangci-lint côté web ; ESLint et Prettier sont écartés car typescript-eslint ne prend pas en charge TypeScript 7, et oxlint et oxfmt sont les outils du gabarit officiel de Vite. oxfmt étant encore en bêta, sa version est épinglée et ses mises à jour se font dans un commit à part, qui peut reformater beaucoup de fichiers ; Vitest pour la logique pure du front, pas de tests de bout en bout pour l'instant.
 
 ## Dépôt et déploiement
 
@@ -144,6 +144,9 @@ Le découpage en jetons, `Normalize`, la recherche et la complétion restent uni
 hushtongue/
 ├── go.mod                  # module Go unique, avec `ignore ./web/node_modules`
 ├── Dockerfile
+├── compose.yaml            # service complet : Postgres et hushtongue buildé
+├── compose.dev.yaml        # dev : Postgres seul
+├── Makefile                # raccourcis de dev, de contrôle et de build
 ├── cmd/server/main.go      # lit la config, ouvre Postgres, lance le serveur
 ├── internal/
 │   ├── config/             # variables d'env (remplace le build tag gm)
@@ -151,6 +154,7 @@ hushtongue/
 │   │   ├── httpapi/        # commun : JSON, format d'erreur, utilisateur de la requête
 │   │   ├── middleware/     # JSON (404/405, Content-Type), CrossOrigin, RequireSession, RequireGM
 │   │   ├── auth/           # sessions, login, logout
+│   │   ├── frontend/       # fichiers du front, index.html hors /api
 │   │   └── players/, health/, settings/, words/…  # un paquet par fonctionnalité
 │   └── services/           # métier : generator, lexicon, composer
 │       └── storage/
@@ -169,10 +173,10 @@ hushtongue/
 ```
 
 - `internal/tui`, `storage/sqlite` et `.goreleaser.yaml` sont retirés.
-- Le paquet Go `web` expose le front buildé comme `fs.FS` ; il est dans `web/` car `go:embed` ne peut pas remonter avec `..`. Seul le Dockerfile builde avec `-tags embed` : sans le tag, `go build`, `go test` et golangci-lint marchent sans Node, et rien de vide n'est à committer dans `dist/`.
+- Le paquet Go `web` expose le front buildé comme `fs.FS` ; il est dans `web/` car `go:embed` ne peut pas remonter avec `..`. Seuls le Dockerfile et `make build` buildent avec `-tags embed` : sans le tag, `go build`, `go test` et golangci-lint marchent sans Node, et rien de vide n'est à committer dans `dist/`.
 - `ignore ./web/node_modules` dans `go.mod` : certains paquets npm contiennent des fichiers `.go`, qui casseraient `go build ./...` et le lint.
-- Le serveur sert les fichiers statiques et renvoie `index.html` pour toute route hors `/api`.
-- En dev : `go run ./cmd/server` et `npm run dev` dans `web/`. Vite transmet `/api` au serveur Go ; le cookie reste sur la même origine, sans CORS.
+- Le serveur sert les fichiers statiques et renvoie `index.html` pour toute route hors `/api` (paquet `internal/server/frontend`, qui reçoit le `fs.FS` de `web.Dist()` par `server.New`, et un `fstest.MapFS` en test). Les fichiers de `assets/`, nommés d'après le hash de leur contenu, sont mis en cache définitivement.
+- En dev : `make db` lance Postgres seul (`compose.dev.yaml`), `make run` le serveur Go, `make web-dev` le serveur de dev de Vite. Vite transmet `/api` au serveur Go ; le cookie reste sur la même origine, sans CORS.
 - Pas d'outillage monorepo (un seul paquet JS), pas de génération de types depuis Go pour l'instant.
 - Serveur HTTP : bibliothèque standard (`net/http`, routage par motifs, `encoding/json/v2`, actif par défaut depuis Go 1.27), `pgx/v5` pour Postgres.
 - Organisation de `internal/server` : un sous-paquet par fonctionnalité (`auth`, `players`, `health`, `settings`, puis `words`, `translations`, `generation`, `translate`, `texts`, `import`), plus `httpapi` pour ce qu'ils partagent (lecture et écriture JSON, format d'erreur, `PathID`, utilisateur de la requête) et `middleware` pour tous les middlewares (réponses 404/405 en JSON et contrôle du `Content-Type`, protection cross-origin, `RequireSession`, `RequireGM`).
@@ -183,7 +187,9 @@ hushtongue/
   - Handlers fins : lire la requête, appeler le service, écrire la réponse ; la logique métier reste dans `internal/services`.
   - Les services renvoient des erreurs sentinelles (`storage.ErrNotFound`…), converties en code HTTP et `httpapi.Error` par une seule fonction, `httpapi.WriteServiceError`.
   - Tests en deux couches : chaque fonctionnalité sur ses faux ; `internal/server` sur Postgres à travers la table des routes, pour le câblage (routes réservées au MJ, CSRF, 404/405) et un parcours complet (login, création d'un joueur, connexion par lien, régénération, suppression).
-- Dockerfile en trois étapes : build Node du front, build Go, image finale minimale avec le seul binaire. Le HTTPS est assuré par le reverse proxy.
+- Dockerfile en trois étapes : build Node du front, build Go, image finale minimale (distroless) avec le seul binaire. Le HTTPS est assuré par le reverse proxy.
+- Deux fichiers Compose, avec des noms de projet distincts pour ne pas partager la base : `compose.yaml` lance le service complet (Postgres et l'image buildée, URL publique `http://localhost:8080`), `compose.dev.yaml` Postgres seul, exposé sur `127.0.0.1`. Les identifiants de dev viennent d'un `.env` ignoré par git, que `make` copie depuis `.env.example` au premier lancement, et que lisent Compose et le Makefile.
+- Un Makefile plutôt qu'un Taskfile : `make` est déjà installé partout, Task serait une dépendance de plus. Il reste une couche fine sur les commandes du README et de la CI, compatible avec le GNU Make 3.81 de macOS.
 - Santé, sans authentification :
   - `GET /api/health/live` : `200` dès que le serveur répond, sans regarder la base. Un redémarrage n'y changerait rien quand Postgres est indisponible.
   - `GET /api/health/ready` : `200` si la base répond à un ping en moins de 2 s, `503` sinon. Sert au `depends_on: condition: service_healthy` de Docker Compose et au health check de Traefik.
@@ -229,7 +235,7 @@ hushtongue/
    5. Auth : sessions (création, expiration glissante, suppression, purge), login MJ avec limite de tentatives, middleware (`401`, `403`, contrôle du `Content-Type`), `GET /api/me`, `POST /api/logout`.
    6. Joueurs : création, liste, suppression, régénération du lien (qui ferme les sessions du joueur), `POST /api/login/link`.
 3. Socle front :
-   1. `web/` : Vite, React, TypeScript, React Router, TanStack Query, ESLint, Prettier, Vitest ; `embed.go`/`noembed.go` ; proxy Vite vers le serveur ; `ignore ./web/node_modules` dans `go.mod` ; front ajouté à la CI.
+   1. `web/` : Vite, React, TypeScript, React Router, TanStack Query, Tailwind, oxlint, oxfmt, Vitest ; `embed.go`/`noembed.go` ; proxy Vite vers le serveur ; `ignore ./web/node_modules` dans `go.mod` ; front ajouté à la CI.
    2. Pages Connexion et `/login/{token}`, mise en page avec le menu selon le rôle.
    3. Page Joueurs (MJ).
 4. Import v1 (API et bouton dans le front).
@@ -237,4 +243,4 @@ hushtongue/
 6. Traduction.
 7. Génération (MJ).
 8. Notes et textes mémorisés.
-9. Dockerfile, workflow de release (image Docker), `v2.0.0`.
+9. Workflow de release (image Docker), `v2.0.0`. Le Dockerfile, les fichiers Compose et le Makefile sont arrivés après l'étape 3.1.
