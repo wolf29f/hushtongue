@@ -22,7 +22,8 @@ export async function request<T>(method: string, path: string, body?: unknown): 
   try {
     response = await fetch(`/api${path}`, {
       method,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      // The API refuses a modifying request without this header, even without a body
+      headers: method === "GET" ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {

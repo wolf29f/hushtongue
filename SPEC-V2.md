@@ -130,7 +130,7 @@ Le découpage en jetons, `Normalize`, la recherche et la complétion restent uni
 
 ## Front
 
-- React, TypeScript 7 (le compilateur natif), Vite. React Router pour les pages, `fetch` natif pour les appels à l'API, TanStack Query pour le cache des données serveur (états de chargement et d'erreur, rechargement après une modification). pnpm comme gestionnaire de paquets, avec sa version épinglée dans `packageManager`, des versions de dépendances exactes et `pnpm install --frozen-lockfile` en CI ; son délai par défaut avant d'installer une version tout juste publiée est gardé, contre les paquets compromis. Tailwind CSS 4 pour les styles, pas de bibliothèque de composants.
+- React, TypeScript 7 (le compilateur natif), Vite. React Router en data mode pour les pages et les données : chaque route a un loader (lecture avant l'affichage) et, si elle a un formulaire, une action ; après une action, les loaders de la page sont relancés, ce qui recharge les données sans cache à invalider. La table des routes, avec ses loaders et ses actions, est dans `src/routes.tsx`, comme celle du serveur dans `server.go`. Les réglages de l'instance (`GET /api/settings`) sont lus une seule fois au démarrage par un `SettingsProvider` qui englobe le routeur, et chaque composant les lit avec `useSettings`. `fetch` natif pour les appels à l'API. Pas de bibliothèque de cache (TanStack Query, essayé à l'étape 3.1, a été retiré à la 3.2) : le front doit rester simple à relire, et un petit helper écrit à la main est préféré à une bibliothèque au comportement caché. pnpm comme gestionnaire de paquets, avec sa version épinglée dans `packageManager`, des versions de dépendances exactes et `pnpm install --frozen-lockfile` en CI ; son délai par défaut avant d'installer une version tout juste publiée est gardé, contre les paquets compromis. Tailwind CSS 4 pour les styles, pas de bibliothèque de composants.
 - Pages : Connexion, Traduction (accueil), Dictionnaire, Fiche du mot, Génération (MJ), Textes, Joueurs (MJ).
 - Raccourcis clavier de la v1 gardés quand ils ont un sens sur le web (navigation dans les suggestions, choix des traductions), chaque action restant faisable à la souris et au doigt.
 - Interface en français.
@@ -166,6 +166,7 @@ hushtongue/
     │   ├── api/            # client et types de l'API, écrits à la main
     │   ├── pages/          # une page par écran
     │   ├── components/
+    │   ├── routes.tsx      # table des routes, loaders et actions
     │   └── main.tsx
     ├── embed.go            # //go:build embed  → embarque dist/
     ├── noembed.go          # //go:build !embed → page « front non buildé »
@@ -236,7 +237,7 @@ hushtongue/
    6. Joueurs : création, liste, suppression, régénération du lien (qui ferme les sessions du joueur), `POST /api/login/link`.
 3. Socle front :
    1. `web/` : Vite, React, TypeScript, React Router, TanStack Query, Tailwind, oxlint, oxfmt, Vitest ; `embed.go`/`noembed.go` ; proxy Vite vers le serveur ; `ignore ./web/node_modules` dans `go.mod` ; front ajouté à la CI.
-   2. Pages Connexion et `/login/{token}`, mise en page avec le menu selon le rôle.
+   2. Pages Connexion et `/login/{token}`, mise en page avec le menu selon le rôle ; passage de React Router en data mode, qui remplace TanStack Query. Le menu liste déjà les pages de la spec, celles à venir affichant « Cette page arrive bientôt ».
    3. Page Joueurs (MJ).
 4. Import v1 (API et bouton dans le front).
 5. Dictionnaire et fiche du mot.

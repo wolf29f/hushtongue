@@ -46,10 +46,30 @@ describe("request", () => {
     });
   });
 
-  test("returns nothing for a 204", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+  test("sends a modifying request without a body as JSON", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
 
     expect(await request("POST", "/logout")).toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith("/api/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: undefined,
+    });
+  });
+
+  test("sends a GET without a Content-Type", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json({}));
+    vi.stubGlobal("fetch", fetch);
+
+    await request("GET", "/settings");
+    expect(fetch).toHaveBeenCalledWith("/api/settings", {
+      method: "GET",
+      headers: undefined,
+      body: undefined,
+    });
   });
 
   test("throws the error of the API", async () => {
